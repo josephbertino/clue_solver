@@ -38,10 +38,7 @@ class Engine:
         # Initialize turn list with blank turn
         self.turn_sequence: list[Turn] = [Turn()]
         self.my_hand: list[str] = my_hand
-        # TODO modify the detective pad
-        self.detective_pad = {
-            category.__name__: {value: True for value in category.__members__} for category in CATEGORIES
-        }
+        self.accuse_clues = set()
 
         # Initialize player list with blank player
         self.player_list: list[Player] = [Player()]
@@ -50,7 +47,7 @@ class Engine:
         self.my_player: Player = None
 
         self.setup_players()
-        self.reduce_detective_pad()
+        self.determine_clues()
 
     def setup_players(self):
         num_active_cards = NUM_CARDS - 3
@@ -71,67 +68,84 @@ class Engine:
             suggester_num = (turn_number % self.num_players) or self.num_players
             suggester = self.player_list[suggester_num]
 
-            print(f"\nTurn #{turn_number}")
+            """Log game details to output"""
+            print(f"\n----------------------------------------------------------")
+            print(f"Turn #{turn_number}")
             for player in self.player_list[1:]:
                 print(f"++ Player {player.number} {'(YOU!)' if player == self.my_player else '      '}")
                 print(f"      Hand:      {sorted(player.hand)}")
                 print(f"      Possibles: {sorted(player.possibles)}")
 
-            print("!! Unsolved Turns:")
+            print("\n!! Unsolved Turns:")
             for turn in self.turn_sequence[1:]:
                 if not turn.totally_processed and turn.revealer is not self.my_player:
                     print(f"   Turn:{turn.number}: Suggester:{turn.suggester.number} Suggestion:"
                           f"{turn.suggestion} Revealer:{turn.revealer.number} Possible Reveals:{turn.possible_reveals}")
 
-            print(f"-- Player {suggester.number} {'(YOU!)' if suggester == self.my_player else ''} suggests")
+            """Player takes turn"""
+            print(f"\n-- Player {suggester.number} {'(YOU!)' if suggester == self.my_player else ''} takes turn")
+            self.offer_clue_intel()
             self.take_turn(turn_number, suggester)
 
-            # TODO after-turn-deductions and reduce detective pad can be merged i think
-            self.after_turn_deductions()
-            self.reduce_detective_pad()
+            self.get_info_from_turns()
+
             if self.player_is_me(suggester) and self.ready_to_accuse():
-                self.make_accusation()
+                print("You are ready to accuse!")
+                self.offer_clue_intel()
                 break
 
     def player_is_me(self, player: Player):
         return player == self.my_player
 
-    def reduce_detective_pad(self):
-        # Mark as "False" all cards appearing in player hands, because they cannot be part of the accusation
-        for category_dict in self.detective_pad.values():
-            for player in self.player_list:
-                for k in category_dict.keys() & player.hand:
-                    category_dict[k] = False
+    def determine_clues(self):
+        old_clues = self.accuse_clues.copy()
 
-        # all_active_cards are all cards in either player HANDS or POSSIBLES... meaning there is still definitely
-        #  a chance the card is on the table
-        all_active_cards = set()
+        all_hands = set()
+        hands_and_possibles = set()
         for player in self.player_list:
-            all_active_cards.update(player.hand | player.possibles)
+            all_hands.update(player.hand)
+            hands_and_possibles.update(player.hand | player.possibles)
 
-        # TODO improve the logic for this. I just don't like it
-        # Go through each category. If a card is not active, then it must be a Clue
         for category in CATEGORIES:
-            clue_contenders = set(category.__members__.keys())
-            clue_contenders = clue_contenders - all_active_cards
-            if len(clue_contenders) == 1:
-                print(f"^^^^^^^^  Include in Accusation: {list(clue_contenders)[0]}")
+            # If all but one card from a category is in players' HANDS, the outcast must be a Clue
+            cat_cards_not_in_hands = set(category.__members__.keys()) - all_hands
+            if len(cat_cards_not_in_hands) == 1:
+                # TODO can section accuse_clues by category
+                self.accuse_clues.update(cat_cards_not_in_hands)
+            elif len(cat_cards_not_in_hands) < 1:
+                raise ValueError(f"All cards from the same category are in play, which is impossible!: "
+                                 f"{category.__name__}")
 
-    # TODO improve logic for this to make it more elegant... it def overlaps with reduce_detective_pad
+            # If a card is not in any HANDS or POSSIBLES, it must be a Clue
+            inactive_cat_cards = set(category.__members__.keys()) - hands_and_possibles
+            if len(inactive_cat_cards) == 1:
+                self.accuse_clues.update(inactive_cat_cards)
+            elif len(inactive_cat_cards) > 1:
+                raise ValueError(f"Multiple cards from the same category are out of play!: "
+                                 f"{category.__name__}:{inactive_cat_cards}")
+
+        if len(self.accuse_clues) > len(old_clues):
+            # If we gained a new clue, make sure it's removed from player POSSIBLES
+            #    (We may have determined a clue because all other cards in that category were in player HANDS...
+            #    in which case that card might still be lingering in a player's POSSIBLE)
+            # TODO this can prob be moved into a method, once I generalize the two reduce_* methods
+            for player in self.player_list:
+                player.possibles -= self.accuse_clues
+            # A Clue could also not be a revealed card in a Turn
+            for turn in self.turn_sequence:
+                turn.possible_reveals -= self.accuse_clues
+            # TODO probably want to do asserting for these sets I am changing
+            return True
+
+        return False
+
+    def offer_clue_intel(self):
+        print(f"-- Known Clues: {self.accuse_clues}")
+
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
-        for category_dict in self.detective_pad.values():
-            if sum(category_dict.values()) == 1:
-                print(f"Include in Accusation: {set(k for k,v in category_dict.items() if v)}")
-        return all(sum(category_dict.values()) == 1 for category_dict in self.detective_pad.values())
-
-    # TODO this also overlaps with ready_to_accuse and reduce_detective_pad
-    def make_accusation(self):
-        accusation = []
-        for category, category_dict in self.detective_pad.items():
-            accusation += [f"{category}: {k}" for k, v in category_dict.items() if v]
-        assert len(accusation) == 3
-        print(f'**** I should ACCUSE: {accusation}')
+        # TODO can improve this by breaking down the list by category
+        return len(self.accuse_clues) == 3
 
     def take_turn(self, turn_number, suggester: Player):
         parameters = input("-- Enter Turn Parameters (Suggestion Combo, Revealer Number): ")
@@ -141,15 +155,15 @@ class Engine:
         revealer = self.player_list[revealer_num] if revealer_num > 0 else None
         turn = Turn(number=turn_number, suggestion=suggestion, suggester=suggester, revealer=revealer)
 
-        # If Engine is the player and a card was revealed, process this turn
-        if self.player_is_me(suggester) and revealer is not None:
+        # If Engine is the player and a card was revealed, store turn.revealed_card for processing
+        if revealer is not None and self.player_is_me(suggester):
             revealed_card = input(f"!! Player {suggester.number} is You! What card did you see? ")
             turn.possible_reveals = {revealed_card}
             assert len(turn.possible_reveals) == 1
 
         self.turn_sequence.append(turn)
 
-    def after_turn_deductions(self):
+    def get_info_from_turns(self):
         """
         If a pass through the turn sequence yielded new info (narrowing down other players' hands),
             loop through the turn sequence again.
@@ -160,6 +174,7 @@ class Engine:
             for turn in self.turn_sequence[:0:-1]:
                 # Traverse turns reverse-sequentially
                 got_info |= self.process_turn(turn)
+            got_info |= self.determine_clues()
 
     def get_responder_sequence(self, turn: Turn):
         sug_num = turn.suggester.number
@@ -204,27 +219,53 @@ class Engine:
                 Responder is not the Revealer, so they dont have any of the suggested cards. 
                     Reduce responder's POSSIBLES
                 """
+                # TODO generalize these reduce_player_possibility methods?
                 got_info |= self.reduce_player_possibles_from_pass(responder, turn.suggestion)
 
-        # TODO should this go somewhere else?
-        self.check_players_hand_size()
+        # See if we can deduce a player's entire hand after trimming their POSSIBLES
+        got_info |= self.check_players_hand_size()
+        got_info |= self.reduce_player_possibles_from_hands()
 
         if turn.revealer is None:
-            # If nobody revealed any card for the turn, all we can do is remove them from players' POSSIBLES
+            # If nobody revealed any card for the turn, all we can do is remove them from players' POSSIBLES,
+            #   So no more possible processing can be done.
             turn.totally_processed = True
 
         return got_info
 
+    # TODO Where should this method be called, and where does it not need to be called?
+    def reduce_player_possibles_from_hands(self):
+        got_info = False
+        all_hands = set()
+        for player in self.player_list:
+            all_hands.update(player.hand)
+
+        for player in self.player_list:
+            if len(player.possibles - all_hands) < len(player.possibles):
+                got_info = True
+                player.possibles -= all_hands
+        # TODO I don't like all these methods returning got_info, OR this method could be merged with others. Maybe
+        #  theres some redundant "info-checking" going on
+        return got_info
+
+    # TODO if info is obtained from this function, what deductions should we do next?
     def check_players_hand_size(self):
         """
         1) If a Player's HAND and POSSIBLES combined is equal to size_hand, make them all part of HAND
         2) If a Player has HAND size equal to size_hand, wipe out their POSSIBLES
+        :return: bool Whether a player's entire hand was determined
         """
+        got_info = False
         for player in self.player_list:
+            # Only want to consider players with unsolved HANDS
+            if len(player.hand) == player.size_hand:
+                continue
+
             if len(player.hand) + len(player.possibles) == player.size_hand:
                 player.hand.update(player.possibles)
-            if len(player.hand) == player.size_hand:
                 player.possibles = set()
+                got_info = True
+        return got_info
 
     # TODO maybe incorporate this into determine_card_revealed
     def reduce_player_possibles_from_reveal(self, turn: Turn):
@@ -242,7 +283,7 @@ class Engine:
         revealer = turn.revealer
         revealer.hand = revealer.hand | {turn.revealed_card}  # Union
 
-    # TODO my logic sucks at this point. too complicated. need to refactor a lot
+    # TODO all these process methods should prob be consolidated
     # TODO cards as enum.Enum should not break this method
     def process_revealed_turn(self, turn: Turn):
         """
@@ -297,21 +338,14 @@ if __name__ == '__main__':
     main()
 
 
-"""
-Possible additions to solving logic:
-    0) If something is Known, remove it from all possible reveals and player.possibles
-    
-    1) REFACTOR!
-        # TODO Come up with the idea of a SET (namedtuple? class?) such that instance == (Suspect,Weapon,Room)
-            + I wonder if ultimately I want the "cards" stored in HAND and POSSIBLE to be enum.Enums rather than strings
-        # TODO Refactor all code... are all methods in the optimal locations? Can some methods be consolidated?
-        # TODO Can some methods be spatially reorganized?
-        # TODO cleanup console output... notably the "include in accusation" notes
-    
-    # TODO Improve detective pad
-        # TODO If all but one elem from a category is in players HANDS, then THAT has to be the culprit!
-        # TODO if an elem is missing from hands and possibles, then THAT has to be the culprit!
-    # TODO Handle a player passing because they cannot enter a room
-    # TODO Organize hands according to categories
-    # TODO Spell checking inputs
-"""
+"""Possible additions to solving logic:"""
+# TODO Handle a player passing because they cannot enter a room
+
+# TODO REFACTOR!
+    # TODO Come up with the idea of a SET (namedtuple? class?) such that instance == (Suspect,Weapon,Room) I wonder if ultimately I want the "cards" stored in HAND and POSSIBLE to be enum.Enums rather than strings
+    # TODO Refactor all code... are all methods in the optimal locations? Can some methods be consolidated?
+    # TODO Can some methods be spatially reorganized?
+    # TODO cleanup console output... notably the "include in accusation" notes
+
+# TODO Organize hands according to categories
+# TODO Spell checking inputs
