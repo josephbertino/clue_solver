@@ -18,6 +18,10 @@ class Player(object):
         self.hand: set[str] = set(hand if is_me else [])
         self.possibles: set[str] = set([] if is_me else ALL_CARDS - set(hand))
 
+        if number == 0:  # Non-player should have empty sets
+            self.hand = set([])
+            self.possibles = set([])
+
 
 class Turn(object):
     def __init__(self, number: int = 0, suggestion=None, suggester: Player = None,
@@ -47,7 +51,6 @@ class Engine:
         self.my_player: Player = None
 
         self.setup_players()
-        self.determine_clues()
 
     def setup_players(self):
         num_active_cards = NUM_CARDS - 3
@@ -60,6 +63,9 @@ class Engine:
             if is_me:
                 self.my_player = new_player
             self.player_list.append(new_player)
+
+    def player_is_me(self, player: Player):
+        return player == self.my_player
 
     def run(self):
         turn_number = 0
@@ -86,16 +92,12 @@ class Engine:
             print(f"\n-- Player {suggester.number} {'(YOU!)' if suggester == self.my_player else ''} takes turn")
             self.offer_clue_intel()
             self.take_turn(turn_number, suggester)
-
             self.get_info_from_turns()
 
             if self.player_is_me(suggester) and self.ready_to_accuse():
-                print("You are ready to accuse!")
+                print("****** You are ready to accuse!")
                 self.offer_clue_intel()
                 break
-
-    def player_is_me(self, player: Player):
-        return player == self.my_player
 
     def determine_clues(self):
         old_clues = self.accuse_clues.copy()
@@ -113,22 +115,20 @@ class Engine:
                 # TODO can section accuse_clues by category
                 self.accuse_clues.update(cat_cards_not_in_hands)
             elif len(cat_cards_not_in_hands) < 1:
-                raise ValueError(f"All cards from the same category are in play, which is impossible!: "
-                                 f"{category.__name__}")
+                raise ValueError(f"All cards from the same category are in play, which is impossible!: {category.__name__}")
 
             # If a card is not in any HANDS or POSSIBLES, it must be a Clue
             inactive_cat_cards = set(category.__members__.keys()) - hands_and_possibles
             if len(inactive_cat_cards) == 1:
                 self.accuse_clues.update(inactive_cat_cards)
             elif len(inactive_cat_cards) > 1:
-                raise ValueError(f"Multiple cards from the same category are out of play!: "
-                                 f"{category.__name__}:{inactive_cat_cards}")
+                raise ValueError(f"Multiple cards from the same category are out of play!: {category.__name__}:{inactive_cat_cards}")
 
         if len(self.accuse_clues) > len(old_clues):
             # If we gained a new clue, make sure it's removed from player POSSIBLES
             #    (We may have determined a clue because all other cards in that category were in player HANDS...
             #    in which case that card might still be lingering in a player's POSSIBLE)
-            # TODO this can prob be moved into a method, once I generalize the two reduce_* methods
+            # TODO this can prob be moved into a method, once I generalize the reduce_* methods
             for player in self.player_list:
                 player.possibles -= self.accuse_clues
             # A Clue could also not be a revealed card in a Turn
@@ -159,7 +159,8 @@ class Engine:
         if revealer is not None and self.player_is_me(suggester):
             revealed_card = input(f"!! Player {suggester.number} is You! What card did you see? ")
             turn.possible_reveals = {revealed_card}
-            assert len(turn.possible_reveals) == 1
+            turn.revealed_card = revealed_card
+            # TODO once I refactor logic, this line might go away
 
         self.turn_sequence.append(turn)
 
@@ -171,21 +172,12 @@ class Engine:
         got_info = True
         while got_info:
             got_info = False
+            # Traverse turns reverse-sequentially
             for turn in self.turn_sequence[:0:-1]:
-                # Traverse turns reverse-sequentially
+                # TODO ideal loop: reduce turn possibles / get turn reveal -> reduce player possibles / increase
+                #  player hand. Also, most of the stuff in process_turn() only needs to happen once!
                 got_info |= self.process_turn(turn)
             got_info |= self.determine_clues()
-
-    def get_responder_sequence(self, turn: Turn):
-        sug_num = turn.suggester.number
-        rev_num = 0 if (turn.revealer is None) else turn.revealer.number
-
-        if rev_num < 1:  # No revealed card
-            return self.player_list[sug_num+1:] + self.player_list[1:sug_num]
-        elif sug_num < rev_num:
-            return self.player_list[sug_num+1:rev_num+1]
-        else:
-            return self.player_list[sug_num+1:] + self.player_list[1:rev_num+1]
 
     def process_turn(self, turn: Turn):
         got_info = False
@@ -197,18 +189,17 @@ class Engine:
         if turn.totally_processed:
             return got_info
 
-        suggester = turn.suggester
         responder_sequence = self.get_responder_sequence(turn)
         for responder in responder_sequence:
-            if responder == suggester:
+            if responder == turn.suggester:
                 raise ValueError('Responder cannot be Suggester')
             elif responder == turn.revealer:
                 if responder == self.my_player:
-                    # I revealed a card... nothing more can be gained from this turn
+                    # I revealed a card.
                     turn.possible_reveals = turn.possible_reveals & self.my_player.hand  # Intersection
                     turn.totally_processed = True
                 else:
-                    # Another player revealed a card. Try to find out who
+                    # Another player revealed a card.
                     got_info |= self.process_revealed_turn(turn)
                     if turn.revealed_card is not None:
                         self.reduce_player_possibles_from_reveal(turn)
@@ -232,6 +223,17 @@ class Engine:
             turn.totally_processed = True
 
         return got_info
+
+    def get_responder_sequence(self, turn: Turn):
+        sug_num = turn.suggester.number
+        rev_num = 0 if (turn.revealer is None) else turn.revealer.number
+
+        if rev_num < 1:  # No revealed card
+            return self.player_list[sug_num + 1:] + self.player_list[1:sug_num]
+        elif sug_num < rev_num:
+            return self.player_list[sug_num + 1:rev_num + 1]
+        else:
+            return self.player_list[sug_num + 1:] + self.player_list[1:rev_num + 1]
 
     # TODO Where should this method be called, and where does it not need to be called?
     def reduce_player_possibles_from_hands(self):
@@ -346,6 +348,8 @@ if __name__ == '__main__':
     # TODO Refactor all code... are all methods in the optimal locations? Can some methods be consolidated?
     # TODO Can some methods be spatially reorganized?
     # TODO cleanup console output... notably the "include in accusation" notes
+    # TODO Organize hands according to categories
+    # TODO clean up how past Turns are shown
+    # TODO maybe still show all past turns, to get a sense of what to suggest
 
-# TODO Organize hands according to categories
 # TODO Spell checking inputs
