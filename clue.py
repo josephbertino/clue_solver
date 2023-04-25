@@ -45,6 +45,7 @@ class Engine:
         self.accuse_clues = set()
 
         # Initialize player list with blank player
+        # TODO how to solve the player_list[1:] fiasco everywhere
         self.player_list: list[Player] = [Player()]
         self.num_players: int = num_players
         self.my_player_number = my_player_number
@@ -78,19 +79,12 @@ class Engine:
             print(f"\n----------------------------------------------------------")
             print(f"Turn #{turn_number}")
             for player in self.player_list[1:]:
-                print(f"++ Player {player.number}{'(YOU!)' if self.player_is_me(player) else f'[{player.size_hand}]'}")
+                print(f"++ Player {player.number}{' (YOU!)' if self.player_is_me(player) else f' [{len(player.hand)}/{player.size_hand}]'}")
                 print(f"      Hand:      {sorted(player.hand)}")
                 print(f"      Possibles: {sorted(player.possibles)}")
 
-            print("\n!! Unsolved Turns:")
-            for turn in self.turn_sequence[1:]:
-                if not turn.totally_processed and turn.revealer is not self.my_player:
-                    print(f"   Turn:{turn.number}: Suggester:{turn.suggester.number} Suggestion:"
-                          f"{turn.suggestion} Revealer:{turn.revealer.number} Possible Reveals:{turn.possible_reveals}")
-
-            """Player takes turn"""
-            print(f"\n-- Player {suggester.number} {'(YOU!)' if suggester == self.my_player else ''} takes turn")
             self.offer_clue_intel()
+
             if self.take_turn(turn_number, suggester):
                 self.process_turns_for_info()
 
@@ -106,6 +100,9 @@ class Engine:
         :param suggester:
         :return bool: True if turn was taken, False if player passed
         """
+        """Player takes turn"""
+        print(f"\n-- Player {suggester.number} {'(YOU!)' if suggester == self.my_player else ''} takes turn")
+
         parameters = input("-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, or 'PASS'): ")
         if parameters.upper().strip() == 'PASS':
             return False
@@ -122,9 +119,8 @@ class Engine:
 
     def one_time_turn_deductions(self, turn: Turn):
         """Perform post-turn deductions that only need to happen once, immediately after a turn"""
-        # Non-revealing players from a turn don't have any of the suggested cards. Reduce players' POSSIBLES
-        for non_revealing_player in self.get_non_revealer_sequence(turn):
-            self.reduce_player_possibles_from_set(non_revealing_player, turn.suggestion)
+        # Non-revealing responders from a turn don't have any of the suggested cards. Reduce their POSSIBLES
+        self.remove_set_from_player_possibles(players=self.get_non_revealing_responders(turn), cards=turn.suggestion)
 
         # A 'totally processed' turn is one in which we know that the revealer's HAND overlaps
         #   with the suggestion (which happens automatically when there is no revealer, or the revealer is Me),
@@ -137,12 +133,29 @@ class Engine:
             turn.possible_reveals = {revealed_card}
             turn.revealed_card = revealed_card
 
+    def get_non_revealing_responders(self, turn: Turn):
+        """
+        Return the sequence of players ("responders") in a turn that "passed" on a suggestion (did not have a clue card),
+            up until but NOT including the clue revealer
+        :param Turn turn:
+        :return list[Player]:
+        """
+        sug_num = turn.suggester.number
+        rev_num = 0 if (turn.revealer is None) else turn.revealer.number
+
+        if rev_num < 1:  # No revealed card... return everyone BUT the suggester
+            return self.player_list[sug_num + 1:] + self.player_list[1:sug_num]
+        elif sug_num < rev_num:
+            return self.player_list[sug_num + 1:rev_num]
+        else:
+            return self.player_list[sug_num + 1:] + self.player_list[1:rev_num]
+
     def determine_clues(self):
         old_clues = self.accuse_clues.copy()
 
         all_hands = set()
         hands_and_possibles = set()
-        for player in self.player_list:
+        for player in self.player_list[1:]:
             all_hands.update(player.hand)
             hands_and_possibles.update(player.hand | player.possibles)
 
@@ -166,9 +179,8 @@ class Engine:
             # If we gained a new clue, make sure it's removed from player POSSIBLES
             #    (We may have determined a clue because all other cards in that category were in player HANDS...
             #    in which case that card might still be lingering in a player's POSSIBLE)
-            # TODO this can prob be moved into a method, once I generalize the reduce_* methods
-            for player in self.player_list:
-                player.possibles -= self.accuse_clues
+            self.remove_set_from_player_possibles(players=self.player_list[1:], cards=self.accuse_clues)
+
             # A Clue could also not be a revealed card in a Turn
             for turn in self.turn_sequence:
                 turn.possible_reveals -= self.accuse_clues
@@ -178,7 +190,12 @@ class Engine:
         return False
 
     def offer_clue_intel(self):
-        print(f"-- Known Clues: {self.accuse_clues}")
+        print(f"\n** Known Clues: {self.accuse_clues}")
+        print("\n?? Unsolved Turns:")
+        for turn in self.turn_sequence[1:]:
+            if not turn.totally_processed:
+                print(
+                    f"   Turn:{turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number} Possible Reveals:{turn.possible_reveals}")
 
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
@@ -201,88 +218,17 @@ class Engine:
             got_info |= self.determine_clues()
 
     def process_turn(self, turn: Turn):
-        got_info = False
+        if self.process_revealed_turn(turn):
+            # We added to our knowledge of a player's HAND
+            self.remove_set_from_player_possibles(players=self.player_list[1:], cards={turn.revealed_card})
+            self.reduce_player_possibles_from_hands()
+            self.check_players_hand_size()
+            return True
+        return False
 
-        got_info |= self.process_revealed_turn(turn)
-        if turn.revealed_card is not None:
-            self.reduce_player_possibles_from_reveal(turn)
-
-        # See if we can deduce a player's entire hand after trimming their POSSIBLES
-        got_info |= self.check_players_hand_size()
-        got_info |= self.reduce_player_possibles_from_hands()
-
-        return got_info
-
-    def get_non_revealer_sequence(self, turn: Turn):
-        """
-        Return the sequence of players in a turn that "passed" on a suggestion (did not have a clue card),
-            up until but NOT including the clue revealer
-        :param turn:
-        :return:
-        """
-        sug_num = turn.suggester.number
-        rev_num = 0 if (turn.revealer is None) else turn.revealer.number
-
-        if rev_num < 1:  # No revealed card... return everyone BUT the suggester
-            return self.player_list[sug_num + 1:] + self.player_list[1:sug_num]
-        elif sug_num < rev_num:
-            return self.player_list[sug_num + 1:rev_num]
-        else:
-            return self.player_list[sug_num + 1:] + self.player_list[1:rev_num]
-
-    # TODO Where should this method be called, and where does it not need to be called?
-    def reduce_player_possibles_from_hands(self):
-        got_info = False
-        all_hands = set()
-        for player in self.player_list:
-            all_hands.update(player.hand)
-
-        for player in self.player_list:
-            if len(player.possibles - all_hands) < len(player.possibles):
-                got_info = True
-                player.possibles -= all_hands
-        # TODO I don't like all these methods returning got_info, OR this method could be merged with others. Maybe
-        #  theres some redundant "info-checking" going on
-        return got_info
-
-    # TODO if info is obtained from this function, what deductions should we do next?
-    def check_players_hand_size(self):
-        """
-        1) If a Player's HAND and POSSIBLES combined is equal to size_hand, make them all part of HAND
-        2) If a Player has HAND size equal to size_hand, wipe out their POSSIBLES
-        :return: bool Whether a player's entire hand was determined
-        """
-        got_info = False
-        for player in self.player_list:
-            # Only want to consider players with unsolved HANDS
-            if len(player.hand) == player.size_hand:
-                continue
-
-            if len(player.hand) + len(player.possibles) == player.size_hand:
-                player.hand.update(player.possibles)
-                player.possibles = set()
-                got_info = True
-        return got_info
-
-    def reduce_player_possibles_from_reveal(self, turn: Turn):
-        """
-        The card that was revealed during a suggestion must be removed from all player's POSSIBLE sets,
-            and added to the revealer's HAND
-        :param Turn turn:
-        :return:
-        """
-        # Remove from POSSIBLES
-        for player in self.player_list:
-            player.possibles = player.possibles - {turn.revealed_card}  # Removal of set members
-
-        # TODO move this out of here, so that this method can be merged with reduce_player_possibles_from_set
-        # Add to HAND
-        revealer = turn.revealer
-        revealer.hand = revealer.hand | {turn.revealed_card}  # Union
-
-    # TODO all these process methods should prob be consolidated
     # TODO cards as enum.Enum should not break this method
-    def process_revealed_turn(self, turn: Turn):
+    @staticmethod
+    def process_revealed_turn(turn: Turn):
         """
         Potentially shrink possible reveals for this turn's suggestion:
           We know that the revealed card CAN'T be in any other player's HAND,
@@ -295,31 +241,67 @@ class Engine:
             turn.totally_processed = True
             return False
 
-        old_possible_reveals = turn.possible_reveals.copy()
-        # The revealed card cannot be in the suggester's HAND
-        turn.possible_reveals = turn.possible_reveals - set(card for player in self.player_list for card in
-                                                            player.hand if player is not turn.suggester)
         # The revealed card must be in the revealer's POSSIBLES
-        turn.possible_reveals = turn.possible_reveals & turn.revealer.possibles
+        turn.possible_reveals &= turn.revealer.possibles
         if len(turn.possible_reveals) == 1:
             # We've zeroed in on the revealed card for this turn
             turn.revealed_card = list(turn.possible_reveals)[0]
+            turn.revealer.hand |= {turn.revealed_card}
             turn.totally_processed = True
             return True
         elif len(turn.possible_reveals) < 1:
             print("ERROR: len(turn.possible_reveals) < 1")
             print(f"Turn: {vars(turn)}")
-            print(f"old possible_reveals: {old_possible_reveals}")
             print("suggester", vars(turn.suggester))
             print("responder", vars(turn.revealer))
             raise ValueError('turn.possible_reveals has length 0 after reductions')
 
         # We got information from this turn if we narrowed down the possible_reveals
-        return len(turn.possible_reveals) < len(old_possible_reveals)
+        return False
+
+    # TODO if info is obtained from this function, what deductions should we do next?
+    def check_players_hand_size(self):
+        """
+        1) If a Player's HAND and POSSIBLES combined is equal to size_hand, make them all part of HAND
+        2) If a Player has HAND size equal to size_hand, wipe out their POSSIBLES
+        :return: bool Whether a player's entire hand was determined
+        """
+        got_info = False
+        for player in self.player_list[1:]:
+            # Only want to consider OTHER players with unsolved HANDS
+            if self.player_is_me(player):
+                continue
+
+            if len(player.hand) == player.size_hand and len(player.possibles) > 0:
+                # Reduce player.possibles is a gain in information
+                player.possibles = set()
+                got_info = True
+            elif len(player.hand) + len(player.possibles) == player.size_hand:
+                player.hand.update(player.possibles)
+                player.possibles = set()
+                got_info = True
+        return got_info
+
+    # TODO Where should this method be called, and where does it not need to be called?
+    def reduce_player_possibles_from_hands(self):
+        got_info = False
+        all_hands = set()
+        for player in self.player_list[1:]:
+            all_hands.update(player.hand)
+
+        # TODO don't like having player_list[1:] everywhere, but also don't like 0-indexing...
+        for player in self.player_list[1:]:
+            if len(player.possibles - all_hands) < len(player.possibles):
+                got_info = True
+                player.possibles -= all_hands
+        # TODO I don't like all these methods returning got_info, OR this method could be merged with others. Maybe
+        #  theres some redundant "info-checking" going on
+        return got_info
 
     @staticmethod
-    def reduce_player_possibles_from_set(player: Player, suggestion: set[str]):
-        player.possibles = player.possibles - suggestion  # Removal from set
+    def remove_set_from_player_possibles(players: list[Player], cards: set[str]):
+        for player in players:
+            player.possibles -= cards  # Removal from set
 
 
 def main():
