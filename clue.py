@@ -49,7 +49,7 @@ class Engine:
         self.player_list: list[Player] = [Player()]
         self.num_players: int = num_players
         self.my_player_number = my_player_number
-        self.my_player: Player = None
+        self.my_player = None
 
         self.setup_players()
 
@@ -212,7 +212,6 @@ class Engine:
             got_info = False
             # Traverse turns reverse-sequentially
             for turn in self.turn_sequence[:0:-1]:
-                # TODO ideal loop: reduce turn possibles / get turn reveal -> reduce player possibles / increase player hand.
                 if not turn.totally_processed:
                     got_info |= self.process_turn(turn)
             got_info |= self.determine_clues()
@@ -259,7 +258,6 @@ class Engine:
         # We got information from this turn if we narrowed down the possible_reveals
         return False
 
-    # TODO if info is obtained from this function, what deductions should we do next?
     def check_players_hand_size(self):
         """
         1) If a Player's HAND and POSSIBLES combined is equal to size_hand, make them all part of HAND
@@ -282,7 +280,6 @@ class Engine:
                 got_info = True
         return got_info
 
-    # TODO Where should this method be called, and where does it not need to be called?
     def reduce_player_possibles_from_hands(self):
         got_info = False
         all_hands = set()
@@ -294,8 +291,6 @@ class Engine:
             if len(player.possibles - all_hands) < len(player.possibles):
                 got_info = True
                 player.possibles -= all_hands
-        # TODO I don't like all these methods returning got_info, OR this method could be merged with others. Maybe
-        #  theres some redundant "info-checking" going on
         return got_info
 
     @staticmethod
@@ -322,11 +317,9 @@ if __name__ == '__main__':
 
 # TODO REFACTOR!
     # TODO Come up with the idea of a SET (namedtuple? class?) such that instance == (Suspect,Weapon,Room) I wonder if ultimately I want the "cards" stored in HAND and POSSIBLE to be enum.Enums rather than strings
-    # TODO Refactor all code... are all methods in the optimal locations? Can some methods be consolidated?
-    # TODO Can some methods be spatially reorganized?
     # TODO cleanup console output... notably the "include in accusation" notes
     # TODO Organize hands according to categories
-    # TODO clean up how past Turns are shown
+    # TODO reconsider how past Turns are shown
     # TODO maybe still show all past turns, to get a sense of what to suggest
 
 # TODO Spell checking inputs
