@@ -45,13 +45,17 @@ class Engine:
         self.accuse_clues = set()
 
         # Initialize player list with blank player
-        # TODO how to solve the player_list[1:] fiasco everywhere
-        self.player_list: list[Player] = [Player()]
+        self._player_list: list[Player] = [Player()]
+        self.all_players: list[Player] = []  # All active players in game
+        self.other_players: list[Player] = []  # All players besides me
         self.num_players: int = num_players
         self.my_player_number = my_player_number
         self.my_player = None
 
         self.setup_players()
+
+    def get_player(self, player_num):
+        return self._player_list[player_num]
 
     def setup_players(self):
         num_active_cards = NUM_CARDS - 3
@@ -63,7 +67,10 @@ class Engine:
             new_player = Player(number=i, size_hand=size_hand, is_me=is_me, hand=self.my_hand)
             if is_me:
                 self.my_player = new_player
-            self.player_list.append(new_player)
+            self._player_list.append(new_player)
+
+        self.all_players = self._player_list[1:]
+        self.other_players = [player for player in self.all_players if not self.player_is_me(player)]
 
     def player_is_me(self, player: Player):
         return player == self.my_player
@@ -73,12 +80,12 @@ class Engine:
         while True:
             turn_number += 1
             suggester_num = (turn_number % self.num_players) or self.num_players
-            suggester = self.player_list[suggester_num]
+            suggester = self.get_player(suggester_num)
 
             """Log game details to output"""
             print(f"\n----------------------------------------------------------")
             print(f"Turn #{turn_number}")
-            for player in self.player_list[1:]:
+            for player in self.all_players:
                 print(f"++ Player {player.number}{' (YOU!)' if self.player_is_me(player) else f' [{len(player.hand)}/{player.size_hand}]'}")
                 print(f"      Hand:      {sorted(player.hand)}")
                 print(f"      Possibles: {sorted(player.possibles)}")
@@ -110,7 +117,7 @@ class Engine:
         suggestion, revealer_num = parameters.rsplit(sep=',', maxsplit=1)
         revealer_num = int(revealer_num)
         suggestion = suggestion.split(',')
-        revealer = self.player_list[revealer_num] if revealer_num > 0 else None
+        revealer = self.get_player(revealer_num) if revealer_num > 0 else None
         turn = Turn(number=turn_number, suggestion=suggestion, suggester=suggester, revealer=revealer)
 
         self.one_time_turn_deductions(turn)
@@ -144,21 +151,22 @@ class Engine:
         rev_num = 0 if (turn.revealer is None) else turn.revealer.number
 
         if rev_num < 1:  # No revealed card... return everyone BUT the suggester
-            return self.player_list[sug_num + 1:] + self.player_list[1:sug_num]
+            return self._player_list[sug_num + 1:] + self._player_list[1:sug_num]
         elif sug_num < rev_num:
-            return self.player_list[sug_num + 1:rev_num]
+            return self._player_list[sug_num + 1:rev_num]
         else:
-            return self.player_list[sug_num + 1:] + self.player_list[1:rev_num]
+            return self._player_list[sug_num + 1:] + self._player_list[1:rev_num]
 
     def determine_clues(self):
         old_clues = self.accuse_clues.copy()
 
         all_hands = set()
         hands_and_possibles = set()
-        for player in self.player_list[1:]:
+        for player in self.all_players:
             all_hands.update(player.hand)
             hands_and_possibles.update(player.hand | player.possibles)
 
+        # TODO there's probably a better way to keep track of which cards are still possible clues. like a dict.
         for category in CATEGORIES:
             # If all but one card from a category is in players' HANDS, the outcast must be a Clue
             cat_cards_not_in_hands = set(category.__members__.keys()) - all_hands
@@ -179,7 +187,7 @@ class Engine:
             # If we gained a new clue, make sure it's removed from player POSSIBLES
             #    (We may have determined a clue because all other cards in that category were in player HANDS...
             #    in which case that card might still be lingering in a player's POSSIBLE)
-            self.remove_set_from_player_possibles(players=self.player_list[1:], cards=self.accuse_clues)
+            self.remove_set_from_player_possibles(players=self.other_players, cards=self.accuse_clues)
 
             # A Clue could also not be a revealed card in a Turn
             for turn in self.turn_sequence:
@@ -193,9 +201,10 @@ class Engine:
         print(f"\n** Known Clues: {self.accuse_clues}")
         print("\n?? Unsolved Turns:")
         for turn in self.turn_sequence[1:]:
-            if not turn.totally_processed:
-                print(
-                    f"   Turn:{turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number} Possible Reveals:{turn.possible_reveals}")
+            # TODO for the time being, show all turns except ones where I reveal
+            # if not turn.totally_processed:
+            if not self.player_is_me(turn.revealer):
+                print(f"   Turn:{turn.number}: Suggester:{turn.suggester.number} Suggestion:{turn.suggestion} Revealer:{turn.revealer.number} Possible Reveals:{turn.possible_reveals}")
 
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
@@ -219,9 +228,9 @@ class Engine:
     def process_turn(self, turn: Turn):
         if self.process_revealed_turn(turn):
             # We added to our knowledge of a player's HAND
-            self.remove_set_from_player_possibles(players=self.player_list[1:], cards={turn.revealed_card})
-            self.reduce_player_possibles_from_hands()
+            self.remove_set_from_player_possibles(players=self.other_players, cards={turn.revealed_card})
             self.check_players_hand_size()
+            self.reduce_player_possibles_from_hands()
             return True
         return False
 
@@ -265,11 +274,8 @@ class Engine:
         :return: bool Whether a player's entire hand was determined
         """
         got_info = False
-        for player in self.player_list[1:]:
+        for player in self.other_players:
             # Only want to consider OTHER players with unsolved HANDS
-            if self.player_is_me(player):
-                continue
-
             if len(player.hand) == player.size_hand and len(player.possibles) > 0:
                 # Reduce player.possibles is a gain in information
                 player.possibles = set()
@@ -283,11 +289,10 @@ class Engine:
     def reduce_player_possibles_from_hands(self):
         got_info = False
         all_hands = set()
-        for player in self.player_list[1:]:
+        for player in self.other_players:
             all_hands.update(player.hand)
 
-        # TODO don't like having player_list[1:] everywhere, but also don't like 0-indexing...
-        for player in self.player_list[1:]:
+        for player in self.other_players:
             if len(player.possibles - all_hands) < len(player.possibles):
                 got_info = True
                 player.possibles -= all_hands
@@ -315,11 +320,17 @@ if __name__ == '__main__':
 # TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue,
 #  and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
 
+# TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
+# TODO maybe just put check hand size, determine clues, and reduce from hand into their own function
+
+# TODO lets say a player's hand is known for all but one card. if there is an unsolved turn, the player's possibles can ONLY come from the turn.possible_reveals.
+# TODO what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
+
 # TODO REFACTOR!
-    # TODO Come up with the idea of a SET (namedtuple? class?) such that instance == (Suspect,Weapon,Room) I wonder if ultimately I want the "cards" stored in HAND and POSSIBLE to be enum.Enums rather than strings
-    # TODO cleanup console output... notably the "include in accusation" notes
-    # TODO Organize hands according to categories
-    # TODO reconsider how past Turns are shown
-    # TODO maybe still show all past turns, to get a sense of what to suggest
+# TODO Come up with the idea of a SET (namedtuple? class?) such that instance == (Suspect,Weapon,Room) I wonder if ultimately I want the "cards" stored in HAND and POSSIBLE to be enum.Enums rather than strings
+# TODO cleanup console output... notably the "include in accusation" notes
+# TODO Organize hands according to categories
+# TODO reconsider how past Turns are shown
+# TODO maybe still show all past turns, to get a sense of what to suggest
 
 # TODO Spell checking inputs
