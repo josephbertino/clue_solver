@@ -4,6 +4,38 @@ SUSPECT = enum.Enum('Suspect', ['white', 'plum', 'peacock', 'scarlet', 'mustard'
 WEAPON = enum.Enum('Weapon', ['rope', 'pipe', 'wrench', 'candlestick', 'knife', 'revolver'])
 ROOM = enum.Enum('Room', ['billiard', 'lounge', 'conservatory', 'kitchen', 'hall',
                           'dining', 'study', 'library', 'ballroom'])
+
+"""
+Operation: ENUM
+Desired Behavior: 
+1) When displaying Player's HANDS and POSSIBLES, breakdown according to category
+2) All existing deduction logic and functionality should remain unchanged
+3) Turn Suggestions and Turn Possible reveals can also be displayed per category
+4) Accuse clues can be displayed per category
+
+Baby Steps Implementation
+Maybe baby steps can be changing the way hand, possible, suggestion, and accuse_clues are represented, but keep them as plain old sets. I'm thinking using a __repr__ decorator to change how the set[str] is displayed. Because If I can just find a way to tack on a decorator to desired sets, I achieve all desired behavior without having to over-engineer. Then I won't even have to worry about changing the len() method for these sets, because they will still be sets of strings.
+
+Advanced implementation with Class
+Alternatively, the following *things* can be *collections of cards*
+    player's hand
+    player's possibles
+    turn's suggestion
+    turn's possible_reveals
+    engine's accuse_clues
+    engine's all_cards, but this can probably be improved
+    
+    Each collection is a dict of lists, where the keys are the categories, and the values are the members (subsets of the enum classes)
+    Functionality needs: 
+        len
+        repr
+        getter
+        setter
+    Maybe what I want is a new datatype and not necessarily a new class
+    
+    It sounds **REALLY** like what I want is a basic set but with specialized __str__ so I can build out the nice 
+    categorized output on the fly
+"""
 CATEGORIES = [SUSPECT, WEAPON, ROOM]
 ALL_CARDS = {value for category in CATEGORIES for value in category.__members__}
 NUM_CARDS = len(ALL_CARDS)
@@ -11,6 +43,7 @@ NUM_CARDS = len(ALL_CARDS)
 
 class Player(object):
     def __init__(self, number=0, size_hand=0, is_me=False, hand=None):
+        self.is_me = is_me
         if hand is None:
             hand = []
         self.size_hand = size_hand
@@ -50,7 +83,7 @@ class Engine:
         self.other_players: list[Player] = []  # All players besides me
         self.num_players: int = num_players
         self.my_player_number = my_player_number
-        self.my_player = None
+        self.my_player: Player | None = None
 
         self.setup_players()
 
@@ -70,10 +103,7 @@ class Engine:
             self._player_list.append(new_player)
 
         self.all_players = self._player_list[1:]
-        self.other_players = [player for player in self.all_players if not self.player_is_me(player)]
-
-    def player_is_me(self, player: Player):
-        return player == self.my_player
+        self.other_players = [player for player in self.all_players if not player.is_me]
 
     def run(self):
         turn_number = 0
@@ -86,7 +116,7 @@ class Engine:
             print(f"\n----------------------------------------------------------")
             print(f"Turn #{turn_number}")
             for player in self.all_players:
-                print(f"++ Player {player.number}{' (YOU!)' if self.player_is_me(player) else f' [{len(player.hand)}/{player.size_hand}]'}")
+                print(f"++ Player {player.number} {'(YOU!)' if player.is_me else f'[{len(player.hand)}/{player.size_hand}]'}")
                 print(f"      Hand:      {sorted(player.hand)}")
                 print(f"      Possibles: {sorted(player.possibles)}")
 
@@ -95,7 +125,7 @@ class Engine:
             if self.take_turn(turn_number, suggester):
                 self.process_turns_for_info()
 
-            if self.player_is_me(suggester) and self.ready_to_accuse():
+            if suggester.is_me and self.ready_to_accuse():
                 print("****** You are ready to accuse!")
                 self.offer_clue_intel()
                 break
@@ -132,9 +162,13 @@ class Engine:
         # A 'totally processed' turn is one in which we know that the revealer's HAND overlaps
         #   with the suggestion (which happens automatically when there is no revealer, or the revealer is Me),
         #   so there's no new information to gain about the revealer's HAND from further processing
-        if self.player_is_me(turn.revealer) or turn.revealer is None:
+        if turn.revealer.is_me:
             turn.totally_processed = True
-        elif self.player_is_me(turn.suggester):
+            turn.possible_reveals &= self.my_player.hand
+        elif turn.revealer is None:
+            turn.totally_processed = True
+            turn.possible_reveals = set()
+        elif turn.suggester.is_me:
             # If I was the suggester and a card was revealed, store turn.revealed_card
             revealed_card = input(f"!! Player {turn.suggester.number} is You! What card did you see? ")
             turn.possible_reveals = {revealed_card}
@@ -201,10 +235,10 @@ class Engine:
         print(f"\n** Known Clues: {self.accuse_clues}")
         print("\n?? Unsolved Turns:")
         for turn in self.turn_sequence[1:]:
-            # TODO for the time being, show all turns except ones where I reveal
+            # TODO for the time being, show all turns
             # if not turn.totally_processed:
-            if not self.player_is_me(turn.revealer):
-                print(f"   Turn:{turn.number}: Suggester:{turn.suggester.number} Suggestion:{turn.suggestion} Revealer:{turn.revealer.number} Possible Reveals:{turn.possible_reveals}")
+            # if not turn.revealer.is_me:
+            print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number if turn.revealer else None} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
 
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
@@ -234,7 +268,6 @@ class Engine:
             return True
         return False
 
-    # TODO cards as enum.Enum should not break this method
     @staticmethod
     def process_revealed_turn(turn: Turn):
         """
