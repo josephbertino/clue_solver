@@ -5,77 +5,80 @@ WEAPON = enum.Enum('Weapon', ['rope', 'pipe', 'wrench', 'candlestick', 'knife', 
 ROOM = enum.Enum('Room', ['billiard', 'lounge', 'conservatory', 'kitchen', 'hall',
                           'dining', 'study', 'library', 'ballroom'])
 
-"""
-Operation: ENUM
-Desired Behavior: 
-1) When displaying Player's HANDS and POSSIBLES, breakdown according to category
-2) All existing deduction logic and functionality should remain unchanged
-3) Turn Suggestions and Turn Possible reveals can also be displayed per category
-4) Accuse clues can be displayed per category
 
-Baby Steps Implementation
-Maybe baby steps can be changing the way hand, possible, suggestion, and accuse_clues are represented, but keep them as plain old sets. I'm thinking using a __repr__ decorator to change how the set[str] is displayed. Because If I can just find a way to tack on a decorator to desired sets, I achieve all desired behavior without having to over-engineer. Then I won't even have to worry about changing the len() method for these sets, because they will still be sets of strings.
-
-Advanced implementation with Class
-Alternatively, the following *things* can be *collections of cards*
-    player's hand
-    player's possibles
-    turn's suggestion
-    turn's possible_reveals
-    engine's accuse_clues
-    engine's all_cards, but this can probably be improved
-    
-    Each collection is a dict of lists, where the keys are the categories, and the values are the members (subsets of the enum classes)
-    Functionality needs: 
-        len
-        repr
-        getter
-        setter
-    Maybe what I want is a new datatype and not necessarily a new class
-    
-    It sounds **REALLY** like what I want is a basic set but with specialized __str__ so I can build out the nice 
-    categorized output on the fly
-"""
 CATEGORIES = [SUSPECT, WEAPON, ROOM]
 ALL_CARDS = {value for category in CATEGORIES for value in category.__members__}
 NUM_CARDS = len(ALL_CARDS)
 
 
+class ClueCardSet:
+    def __init__(self, name):
+        self.id = name + '_dict'
+
+    def __get__(self, instance, owner):
+        return set([elem for elem_list in instance.__dict__[self.id].values() for elem in elem_list])
+
+    def __set__(self, instance, cards: set[str]):
+        instance.__dict__[self.id] = {}
+        for category in CATEGORIES:
+            clues = set(category.__members__) & cards
+            if clues:
+                instance.__dict__[self.id][category.__name__] = clues
+
+
 class Player(object):
-    def __init__(self, number=0, size_hand=0, is_me=False, hand=None):
+
+    hand = ClueCardSet('hand')
+    possibles = ClueCardSet('possibles')
+
+    def __init__(self, number=0, size_hand=0, is_me=False, cards=None):
+        self.hand_dict = {}
+        self.possibles_dict = {}
+
         self.is_me = is_me
-        if hand is None:
-            hand = []
+        if cards is None:
+            cards = []
         self.size_hand = size_hand
         self.number = number
-        self.hand: set[str] = set(hand if is_me else [])
-        self.possibles: set[str] = set([] if is_me else ALL_CARDS - set(hand))
 
-        if number == 0:  # Non-player should have empty sets
-            self.hand = set([])
-            self.possibles = set([])
+        if self.number == 0:
+            # Non-player should have empty sets
+            self.hand = set()
+            self.possibles = set()
+        else:
+            self.hand = set(cards if is_me else [])
+            self.possibles = set([] if is_me else ALL_CARDS - set(cards))
 
 
 class Turn(object):
-    def __init__(self, number: int = 0, suggestion=None, suggester: Player = None,
-                 revealer: Player = None):
+
+    suggestion = ClueCardSet('suggestion')
+    possible_reveals = ClueCardSet('possible_reveals')
+
+    def __init__(self, number: int = 0, suggestion=None, suggester: Player = None, revealer: Player = None):
+        self.suggestion_dict = {}
+        self.possible_reveals_dict = {}
+
         if suggestion is None:
             suggestion = set()
         self.number = number
-        self.suggestion: set[str] = set(suggestion)
-        self.possible_reveals: set[str] = set(suggestion)
         self.suggester: Player = suggester
         self.revealer: Player = revealer
         self.revealed_card = None
         self.totally_processed = False
+        self.suggestion: set[str] = set(suggestion)
+        self.possible_reveals: set[str] = set(suggestion)
 
 
 class Engine:
+
+    accusation = ClueCardSet('accusation')
+
     def __init__(self, num_players, my_player_number, my_hand):
         # Initialize turn list with blank turn
         self.turn_sequence: list[Turn] = [Turn()]
         self.my_hand: list[str] = my_hand
-        self.accuse_clues = set()
+        self.accusation_dict = {}
 
         # Initialize player list with blank player
         self._player_list: list[Player] = [Player()]
@@ -97,7 +100,7 @@ class Engine:
         for i in range(1, self.num_players + 1):
             is_me = i == self.my_player_number
             size_hand = cards_per_player + (1 if i <= leftovers else 0)
-            new_player = Player(number=i, size_hand=size_hand, is_me=is_me, hand=self.my_hand)
+            new_player = Player(number=i, size_hand=size_hand, is_me=is_me, cards=self.my_hand)
             if is_me:
                 self.my_player = new_player
             self._player_list.append(new_player)
@@ -118,7 +121,7 @@ class Engine:
             for player in self.all_players:
                 print(f"++ Player {player.number} {'(YOU!)' if player.is_me else f'[{len(player.hand)}/{player.size_hand}]'}")
                 print(f"      Hand:      {sorted(player.hand)}")
-                print(f"      Possibles: {sorted(player.possibles)}")
+                print_cards("      Possibles: ", player.possibles_dict)
 
             self.offer_clue_intel()
 
@@ -127,7 +130,7 @@ class Engine:
 
             if suggester.is_me and self.ready_to_accuse():
                 print("****** You are ready to accuse!")
-                self.offer_clue_intel()
+                self.offer_clue_intel(ready=True)
                 break
 
     def take_turn(self, turn_number, suggester: Player):
@@ -162,12 +165,12 @@ class Engine:
         # A 'totally processed' turn is one in which we know that the revealer's HAND overlaps
         #   with the suggestion (which happens automatically when there is no revealer, or the revealer is Me),
         #   so there's no new information to gain about the revealer's HAND from further processing
-        if turn.revealer.is_me:
-            turn.totally_processed = True
-            turn.possible_reveals &= self.my_player.hand
-        elif turn.revealer is None:
+        if turn.revealer is None:
             turn.totally_processed = True
             turn.possible_reveals = set()
+        elif turn.revealer.is_me:
+            turn.totally_processed = True
+            turn.possible_reveals &= self.my_player.hand
         elif turn.suggester.is_me:
             # If I was the suggester and a card was revealed, store turn.revealed_card
             revealed_card = input(f"!! Player {turn.suggester.number} is You! What card did you see? ")
@@ -192,7 +195,7 @@ class Engine:
             return self._player_list[sug_num + 1:] + self._player_list[1:rev_num]
 
     def determine_clues(self):
-        old_clues = self.accuse_clues.copy()
+        old_clues = self.accusation.copy()
 
         all_hands = set()
         hands_and_possibles = set()
@@ -205,45 +208,44 @@ class Engine:
             # If all but one card from a category is in players' HANDS, the outcast must be a Clue
             cat_cards_not_in_hands = set(category.__members__.keys()) - all_hands
             if len(cat_cards_not_in_hands) == 1:
-                # TODO can section accuse_clues by category
-                self.accuse_clues.update(cat_cards_not_in_hands)
+                self.accusation = self.accusation.union(cat_cards_not_in_hands)
             elif len(cat_cards_not_in_hands) < 1:
                 raise ValueError(f"All cards from the same category are in play, which is impossible!: {category.__name__}")
 
             # If a card is not in any HANDS or POSSIBLES, it must be a Clue
             inactive_cat_cards = set(category.__members__.keys()) - hands_and_possibles
             if len(inactive_cat_cards) == 1:
-                self.accuse_clues.update(inactive_cat_cards)
+                self.accusation = self.accusation.union(inactive_cat_cards)
             elif len(inactive_cat_cards) > 1:
                 raise ValueError(f"Multiple cards from the same category are out of play!: {category.__name__}:{inactive_cat_cards}")
 
-        if len(self.accuse_clues) > len(old_clues):
+        if len(self.accusation) > len(old_clues):
             # If we gained a new clue, make sure it's removed from player POSSIBLES
             #    (We may have determined a clue because all other cards in that category were in player HANDS...
             #    in which case that card might still be lingering in a player's POSSIBLE)
-            self.remove_set_from_player_possibles(players=self.other_players, cards=self.accuse_clues)
+            self.remove_set_from_player_possibles(players=self.other_players, cards=self.accusation)
 
             # A Clue could also not be a revealed card in a Turn
             for turn in self.turn_sequence:
-                turn.possible_reveals -= self.accuse_clues
+                turn.possible_reveals -= self.accusation
             # TODO probably want to do asserting for these sets I am changing
             return True
 
         return False
 
-    def offer_clue_intel(self):
-        print(f"\n** Known Clues: {self.accuse_clues}")
-        print("\n?? Unsolved Turns:")
-        for turn in self.turn_sequence[1:]:
-            # TODO for the time being, show all turns
-            # if not turn.totally_processed:
-            # if not turn.revealer.is_me:
-            print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number if turn.revealer else None} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
+    def offer_clue_intel(self, ready: bool = False):
+        print(f"\n** Known Clues: {self.accusation_dict}")
+        if not ready:
+            print("\n?? Unsolved Turns:")
+            for turn in self.turn_sequence[1:]:
+                # TODO for the time being, show all turns
+                # if not turn.totally_processed:
+                # if not turn.revealer.is_me:
+                print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number if turn.revealer else None} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
 
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
-        # TODO can improve this by breaking down the list by category
-        return len(self.accuse_clues) == 3
+        return len(self.accusation) == 3
 
     def process_turns_for_info(self):
         """
@@ -337,6 +339,18 @@ class Engine:
             player.possibles -= cards  # Removal from set
 
 
+def print_cards(prefix: str, cards: dict):
+    s = prefix
+    white = f"\n{' ' * len(prefix)}"
+    ctr = 0
+    for cat in CATEGORIES:
+        cat_cards = set(cat.__members__) & cards.get(cat.__name__, set())
+        if cat_cards:
+            s += f"{white if ctr else ''}{cat.__name__}: {cat_cards}"
+            ctr += 1
+    print(s)
+
+
 def main():
     num_players = int(input("Enter Number of Players: "))
     my_player_number = int(input("Enter My Player Num: "))
@@ -360,10 +374,6 @@ if __name__ == '__main__':
 # TODO what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
 
 # TODO REFACTOR!
-# TODO Come up with the idea of a SET (namedtuple? class?) such that instance == (Suspect,Weapon,Room) I wonder if ultimately I want the "cards" stored in HAND and POSSIBLE to be enum.Enums rather than strings
-# TODO cleanup console output... notably the "include in accusation" notes
-# TODO Organize hands according to categories
 # TODO reconsider how past Turns are shown
-# TODO maybe still show all past turns, to get a sense of what to suggest
-
 # TODO Spell checking inputs
+# TODO I don't think I need ENUMS at all
