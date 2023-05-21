@@ -51,7 +51,7 @@ class Engine:
             for player in self.all_players:
                 print(f"++ Player {player.number} {'(YOU!)' if player.is_me else f'[{len(player.hand)}/{player.size_hand}]'}")
                 print(f"      Hand:      {sorted(player.hand)}")
-                print_cards("      Possibles: ", player.possibles_dict)
+                self.print_cards("      Possibles: ", player.possibles_dict)
 
             self.offer_clue_intel()
 
@@ -90,7 +90,7 @@ class Engine:
     def one_time_turn_deductions(self, turn: Turn):
         """Perform post-turn deductions that only need to happen once, immediately after a turn"""
         # Non-revealing responders from a turn don't have any of the suggested cards. Reduce their POSSIBLES
-        self.remove_set_from_player_possibles(players=self.get_non_revealing_responders(turn), cards=turn.suggestion)
+        self.remove_set_from_possibles(players=self.get_non_revealing_responders(turn), cards=turn.suggestion)
 
         # A 'totally processed' turn is one in which we know that the revealer's HAND overlaps
         #   with the suggestion (which happens automatically when there is no revealer, or the revealer is Me),
@@ -152,7 +152,7 @@ class Engine:
             # If we gained a new clue, make sure it's removed from player POSSIBLES
             #    (We may have determined a clue because all other cards in that category were in player HANDS...
             #    in which case that card might still be lingering in a player's POSSIBLE)
-            self.remove_set_from_player_possibles(players=self.other_players, cards=self.accusation)
+            self.remove_set_from_possibles(players=self.other_players, cards=self.accusation)
             # A Clue could also not be a revealed card in a Turn
             for turn in self.turn_sequence:
                 turn.possible_reveals -= self.accusation
@@ -165,12 +165,12 @@ class Engine:
     def offer_clue_intel(self, ready: bool = False):
         print(f"\n** Known Clues: {self.accusation_dict}")
         if not ready:
-            print("\n?? Unsolved Turns:")
+            print("\n?? Past Turns:")
             for turn in self.turn_sequence[1:]:
-                # if not turn.totally_processed:
-                # if not turn.revealer.is_me:
-                if not turn.suggester.is_me:
-                    print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number if turn.revealer else None} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
+                if turn.revealer and turn.totally_processed and len(turn.possible_reveals) > 1:
+                    # Possibly trim turn.possible_reveals for turns that are already .totally_processed
+                    turn.possible_reveals &= (turn.revealer.hand | turn.revealer.possibles)
+                print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number if turn.revealer else None} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
 
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
@@ -193,7 +193,7 @@ class Engine:
     def process_turn(self, turn: Turn):
         if self.process_revealed_turn(turn):
             # We added to our knowledge of a player's HAND
-            self.remove_set_from_player_possibles(players=self.other_players, cards={turn.revealed_card})
+            self.remove_set_from_possibles(players=self.other_players, cards={turn.revealed_card})
             self.check_players_hand_size()
             return True
         return False
@@ -207,7 +207,7 @@ class Engine:
         :return: bool
         """
         if turn.possible_reveals & turn.revealer.hand:  # Intersection
-            # At least one of the cards in the suggestion are already in the responder's known hand.
+            # At least one of the cards in the suggestion are already known in the responder's hand.
             #   We can't get any more information from this turn
             turn.totally_processed = True
             return False
@@ -245,27 +245,27 @@ class Engine:
                 got_info = True
             elif len(player.hand) + len(player.possibles) == player.size_hand:
                 player.hand.update(player.possibles)
-                self.remove_set_from_player_possibles(self.other_players, player.hand)
+                self.remove_set_from_possibles(self.other_players, player.hand)
                 got_info = True
         return got_info
 
     # TODO make it accept set[Player] for first parameter
     @staticmethod
-    def remove_set_from_player_possibles(players: list[Player], cards: set[str]):
+    def remove_set_from_possibles(players: list[Player], cards: set[str]):
         for player in players:
             player.possibles -= cards  # Removal from set
 
-
-def print_cards(prefix: str, cards: dict):
-    s = prefix
-    white = f"\n{' ' * len(prefix)}"
-    ctr = 0
-    for cat in CATEGORIES:
-        cat_cards = set(cat.__members__) & cards.get(cat.__name__, set())
-        if cat_cards:
-            s += f"{white if ctr else ''}{cat.__name__}: {cat_cards}"
-            ctr += 1
-    print(s)
+    @staticmethod
+    def print_cards(prefix: str, cards: dict):
+        s = prefix
+        white = f"\n{' ' * len(prefix)}"
+        ctr = 0
+        for cat in CATEGORIES:
+            cat_cards = set(cat.__members__) & cards.get(cat.__name__, set())
+            if cat_cards:
+                s += f"{white if ctr else ''}{cat.__name__}: {cat_cards}"
+                ctr += 1
+        print(s)
 
 
 def main():
@@ -292,7 +292,7 @@ if __name__ == '__main__':
 # TODO what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
 
 # TODO REFACTOR!
-# TODO reconsider how past Turns are shown
+# TODO reconsider which past Turns are shown... maybe only show unsolved?
 # TODO Spell checking inputs
 # TODO I don't think I need ENUMS at all
 
