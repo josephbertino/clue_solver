@@ -1,75 +1,4 @@
-import enum
-
-SUSPECT = enum.Enum('Suspect', ['white', 'plum', 'peacock', 'scarlet', 'mustard', 'green'])
-WEAPON = enum.Enum('Weapon', ['rope', 'pipe', 'wrench', 'candlestick', 'knife', 'revolver'])
-ROOM = enum.Enum('Room', ['billiard', 'lounge', 'conservatory', 'kitchen', 'hall',
-                          'dining', 'study', 'library', 'ballroom'])
-
-
-CATEGORIES = [SUSPECT, WEAPON, ROOM]
-ALL_CARDS = {value for category in CATEGORIES for value in category.__members__}
-NUM_CARDS = len(ALL_CARDS)
-
-
-class ClueCardSet:
-    def __set_name__(self, owner, name):
-        self.name = name + '_dict'
-
-    def __get__(self, instance, owner):
-        d = instance.__dict__[self.name]
-        return set([e for vs in d.values() for e in vs])
-
-    def __set__(self, instance, cards: set[str]):
-        instance.__dict__[self.name] = {}
-        for category in CATEGORIES:
-            clues = set(category.__members__) & cards
-            if clues:
-                instance.__dict__[self.name][category.__name__] = clues
-
-
-class Player(object):
-
-    hand = ClueCardSet()
-    possibles = ClueCardSet()
-
-    def __init__(self, number=0, size_hand=0, is_me=False, cards=None):
-        self.hand_dict = {}
-        self.possibles_dict = {}
-
-        self.is_me = is_me
-        if cards is None:
-            cards = []
-        self.size_hand = size_hand
-        self.number = number
-
-        if self.number == 0:
-            # Non-player should have empty sets
-            self.hand = set()
-            self.possibles = set()
-        else:
-            self.hand = set(cards if is_me else [])
-            self.possibles = set([] if is_me else ALL_CARDS - set(cards))
-
-
-class Turn(object):
-
-    suggestion = ClueCardSet()
-    possible_reveals = ClueCardSet()
-
-    def __init__(self, number: int = 0, suggestion=None, suggester: Player = None, revealer: Player = None):
-        self.suggestion_dict = {}
-        self.possible_reveals_dict = {}
-
-        if suggestion is None:
-            suggestion = set()
-        self.number = number
-        self.suggester: Player = suggester
-        self.revealer: Player = revealer
-        self.revealed_card = None
-        self.totally_processed = False
-        self.suggestion: set[str] = set(suggestion)
-        self.possible_reveals: set[str] = set(suggestion)
-
+from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS)
 
 class Engine:
 
@@ -196,7 +125,7 @@ class Engine:
             return self._player_list[sug_num + 1:] + self._player_list[1:rev_num]
 
     def determine_clues(self):
-        old_clues = self.accusation.copy()
+        old_accusation = self.accusation.copy()
 
         all_hands = set()
         hands_and_possibles = set()
@@ -219,7 +148,7 @@ class Engine:
             elif len(inactive_cat_cards) > 1:
                 raise ValueError(f"Multiple cards from the same category are out of play!: {category.__name__}:{inactive_cat_cards}")
 
-        if len(self.accusation) > len(old_clues):
+        if len(self.accusation) > len(old_accusation):
             # If we gained a new clue, make sure it's removed from player POSSIBLES
             #    (We may have determined a clue because all other cards in that category were in player HANDS...
             #    in which case that card might still be lingering in a player's POSSIBLE)
@@ -227,6 +156,8 @@ class Engine:
             # A Clue could also not be a revealed card in a Turn
             for turn in self.turn_sequence:
                 turn.possible_reveals -= self.accusation
+            # We've shrunk player possibles, so this can't hurt
+            self.check_players_hand_size()
             return True
 
         return False
@@ -264,7 +195,6 @@ class Engine:
             # We added to our knowledge of a player's HAND
             self.remove_set_from_player_possibles(players=self.other_players, cards={turn.revealed_card})
             self.check_players_hand_size()
-            self.reduce_player_possibles_from_hands()
             return True
         return False
 
@@ -315,22 +245,11 @@ class Engine:
                 got_info = True
             elif len(player.hand) + len(player.possibles) == player.size_hand:
                 player.hand.update(player.possibles)
-                player.possibles = set()
+                self.remove_set_from_player_possibles(self.other_players, player.hand)
                 got_info = True
         return got_info
 
-    def reduce_player_possibles_from_hands(self):
-        got_info = False
-        all_hands = set()
-        for player in self.other_players:
-            all_hands.update(player.hand)
-
-        for player in self.other_players:
-            if len(player.possibles - all_hands) < len(player.possibles):
-                got_info = True
-                player.possibles -= all_hands
-        return got_info
-
+    # TODO make it accept set[Player] for first parameter
     @staticmethod
     def remove_set_from_player_possibles(players: list[Player], cards: set[str]):
         for player in players:
@@ -362,11 +281,10 @@ if __name__ == '__main__':
 
 
 """Possible additions to solving logic:"""
-# TODO maybe just put check hand size, determine clues, and reduce from hand into their own function
-
 # TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue,
 #  and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
 
+# TODO BIG IMPROVEMENT FOR DEBUGGING: each turn string entry should be logged in an Engine Attribute, and (1) when the game ends or crashes, a traceback spits out the list, and (2) I can feed that list into the Engine to skip ahead to resume the game
 
 # TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
 
@@ -380,4 +298,4 @@ if __name__ == '__main__':
 
 # TODO there's probably a better way to keep track of which cards are still possible clues. like a dict.
 
-# TODO BIG IMPROVEMENT FOR DEBUGGING: each turn string entry should be logged in an Engine Attribute, and (1) when the game ends or crashes, a traceback spits out the list, and (2) I can feed that list into the Engine to skip ahead to resume the game
+# TODO HUGE: What if I just implemented the whole solving apparatus like a table, like in the actual board game? I'd need a whole new array of functions to perform elimination. But ultimately it would be the same thing. And I don't want to belabor this effort. The whole point is to build a Clue deduction engine, not to keep rebuilding it once I have one that works. Unless it was going to help me understand python more
