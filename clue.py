@@ -1,3 +1,5 @@
+# import atexit
+
 from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS)
 
 class Engine:
@@ -6,7 +8,7 @@ class Engine:
 
     def __init__(self, num_players, my_player_number, my_hand):
         # Initialize turn list with blank turn
-        self.turn_sequence: list[Turn] = [Turn()]
+        self.turn_sequence: list[Turn] = [Turn(number=0, is_pass=True)]
         self.my_hand: list[str] = my_hand
         self.accusation_dict = {}
 
@@ -25,6 +27,7 @@ class Engine:
 
     def setup_players(self):
         num_active_cards = NUM_CARDS - 3
+        # Not all players may get the same number of cards
         cards_per_player = num_active_cards // self.num_players
         leftovers = num_active_cards % self.num_players
         for i in range(1, self.num_players + 1):
@@ -39,9 +42,8 @@ class Engine:
         self.other_players = [player for player in self.all_players if not player.is_me]
 
     def run(self):
-        turn_number = 0
         while True:
-            turn_number += 1
+            turn_number = len(self.turn_sequence)
             suggester_num = (turn_number % self.num_players) or self.num_players
             suggester = self.get_player(suggester_num)
 
@@ -75,6 +77,7 @@ class Engine:
 
         parameters = input("-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, or 'PASS'): ")
         if parameters.upper().strip() == 'PASS':
+            self.turn_sequence.append(Turn(number=turn_number, is_pass=True))
             return False
 
         suggestion, revealer_num = parameters.rsplit(sep=',', maxsplit=1)
@@ -155,7 +158,8 @@ class Engine:
             self.remove_set_from_possibles(players=self.other_players, cards=self.accusation)
             # A Clue could also not be a revealed card in a Turn
             for turn in self.turn_sequence:
-                turn.possible_reveals -= self.accusation
+                if not turn.totally_processed:
+                    turn.possible_reveals -= self.accusation
             # We've shrunk player possibles, so this can't hurt
             self.check_players_hand_size()
             return True
@@ -166,7 +170,9 @@ class Engine:
         print(f"\n** Known Clues: {self.accusation_dict}")
         if not ready:
             print("\n?? Past Turns:")
-            for turn in self.turn_sequence[1:]:
+            for turn in self.turn_sequence:
+                if turn.is_pass:
+                    continue
                 if turn.revealer and turn.totally_processed and len(turn.possible_reveals) > 1:
                     # Possibly trim turn.possible_reveals for turns that are already .totally_processed
                     turn.possible_reveals &= (turn.revealer.hand | turn.revealer.possibles)
@@ -185,7 +191,7 @@ class Engine:
         while got_info:
             got_info = False
             # Traverse turns reverse-sequentially
-            for turn in self.turn_sequence[:0:-1]:
+            for turn in self.turn_sequence[::-1]:
                 if not turn.totally_processed:
                     got_info |= self.process_turn(turn)
             got_info |= self.determine_clues()
@@ -249,7 +255,6 @@ class Engine:
                 got_info = True
         return got_info
 
-    # TODO make it accept set[Player] for first parameter
     @staticmethod
     def remove_set_from_possibles(players: list[Player], cards: set[str]):
         for player in players:
@@ -273,6 +278,13 @@ def main():
     my_player_number = int(input("Enter My Player Num: "))
     my_hand = input("Enter your hand, comma separated: ").split(',')
     eng = Engine(num_players=num_players, my_player_number=my_player_number, my_hand=my_hand)
+
+    # def doonexit(*args):
+    #     print('exiting')
+    #     print(eng.turn_sequence)
+    #
+    # atexit.register(doonexit)
+
     eng.run()
 
 
@@ -280,22 +292,17 @@ if __name__ == '__main__':
     main()
 
 
-"""Possible additions to solving logic:"""
-# TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue,
-#  and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
-
-# TODO BIG IMPROVEMENT FOR DEBUGGING: each turn string entry should be logged in an Engine Attribute, and (1) when the game ends or crashes, a traceback spits out the list, and (2) I can feed that list into the Engine to skip ahead to resume the game
-
+"""TODOs in order of descending priority"""
 # TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
 
-# TODO lets say a player's hand is known for all but one card. if there is an unsolved turn, the player's possibles can ONLY come from the turn.possible_reveals.
-# TODO what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
-
-# TODO REFACTOR!
-# TODO reconsider which past Turns are shown... maybe only show unsolved?
 # TODO Spell checking inputs
-# TODO I don't think I need ENUMS at all
+
+# TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue, and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
+
+# TODO lets say a player's hand is known for all but one card. if there is an unsolved turn, the player's possibles can ONLY come from the turn.possible_reveals. And what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
+
+# TODO reconsider which past Turns are shown... maybe only show unsolved?
 
 # TODO there's probably a better way to keep track of which cards are still possible clues. like a dict.
 
-# TODO HUGE: What if I just implemented the whole solving apparatus like a table, like in the actual board game? I'd need a whole new array of functions to perform elimination. But ultimately it would be the same thing. And I don't want to belabor this effort. The whole point is to build a Clue deduction engine, not to keep rebuilding it once I have one that works. Unless it was going to help me understand python more
+# TODO HUGE: What if I just implemented the whole solving apparatus like a table, like in the actual board game? I'd need a whole new array of functions to perform elimination. But ultimately it would be the same thing. And I don't want to belabor this effort. The whole point is to build a Clue deduction engine, not to keep rebuilding it once I have one that works. Unless it was going to help me understand python more. Maybe using pandas

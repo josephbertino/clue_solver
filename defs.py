@@ -56,7 +56,7 @@ class Turn(object):
     suggestion = ClueCardSet()
     possible_reveals = ClueCardSet()
 
-    def __init__(self, number: int = 0, suggestion=None, suggester: Player = None, revealer: Player = None):
+    def __init__(self, number: int = 0, suggestion=None, suggester: Player = None, revealer: Player = None, is_pass=False):
         self.suggestion_dict = {}
         self.possible_reveals_dict = {}
 
@@ -66,6 +66,8 @@ class Turn(object):
         self.suggester: Player = suggester
         self.revealer: Player = revealer
         self.revealed_card = None
-        self.totally_processed = False
         self.suggestion: set[str] = set(suggestion)
         self.possible_reveals: set[str] = set(suggestion)
+        self.is_pass = is_pass
+        # Consider 'passes' to be "totally processed"
+        self.totally_processed = False or self.is_pass
