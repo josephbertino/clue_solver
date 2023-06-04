@@ -1,8 +1,9 @@
-# import atexit
+import atexit
+import dill
 
 from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS)
 
-class Engine:
+class Engine(object):
 
     accusation = ClueCardSet()
 
@@ -86,12 +87,19 @@ class Engine:
         revealer = self.get_player(revealer_num) if revealer_num > 0 else None
         turn = Turn(number=turn_number, suggestion=suggestion, suggester=suggester, revealer=revealer)
 
+        if turn.revealer is not None and turn.suggester.is_me:
+            # If I was the suggester and a card was revealed, store turn.revealed_card
+            turn.revealed_card = input(f"!! Player {turn.suggester.number} is You! What card did you see? ")
+
         self.one_time_turn_deductions(turn)
         self.turn_sequence.append(turn)
         return True
 
     def one_time_turn_deductions(self, turn: Turn):
         """Perform post-turn deductions that only need to happen once, immediately after a turn"""
+        if turn.is_pass:
+            return
+
         # Non-revealing responders from a turn don't have any of the suggested cards. Reduce their POSSIBLES
         self.remove_set_from_possibles(players=self.get_non_revealing_responders(turn), cards=turn.suggestion)
 
@@ -104,11 +112,9 @@ class Engine:
         elif turn.revealer.is_me:
             turn.totally_processed = True
             turn.possible_reveals &= self.my_player.hand
-        elif turn.suggester.is_me:
-            # If I was the suggester and a card was revealed, store turn.revealed_card
-            revealed_card = input(f"!! Player {turn.suggester.number} is You! What card did you see? ")
-            turn.possible_reveals = {revealed_card}
-            turn.revealed_card = revealed_card
+        elif turn.revealed_card:
+            # Revealed card will be removed from player POSSIBLES during process_turn() step
+            turn.possible_reveals = {turn.revealed_card}
 
     def get_non_revealing_responders(self, turn: Turn):
         """
@@ -140,14 +146,14 @@ class Engine:
             # If all but one card from a category is in players' HANDS, the outcast must be a Clue
             cat_cards_not_in_hands = set(category.__members__.keys()) - all_hands
             if len(cat_cards_not_in_hands) == 1:
-                self.accusation = self.accusation.union(cat_cards_not_in_hands)
+                self.accusation |= cat_cards_not_in_hands
             elif len(cat_cards_not_in_hands) < 1:
                 raise ValueError(f"All cards from the same category are in play, which is impossible!: {category.__name__}")
 
             # If a card is not in any HANDS or POSSIBLES, it must be a Clue
             inactive_cat_cards = set(category.__members__.keys()) - hands_and_possibles
             if len(inactive_cat_cards) == 1:
-                self.accusation = self.accusation.union(inactive_cat_cards)
+                self.accusation |= inactive_cat_cards
             elif len(inactive_cat_cards) > 1:
                 raise ValueError(f"Multiple cards from the same category are out of play!: {category.__name__}:{inactive_cat_cards}")
 
@@ -244,8 +250,10 @@ class Engine:
         """
         got_info = False
         for player in self.other_players:
+            if len(player.possibles) == 0:
+                continue
             # Only want to consider OTHER players with unsolved HANDS
-            if len(player.hand) == player.size_hand and len(player.possibles) > 0:
+            if len(player.hand) == player.size_hand:
                 # Reduce player.possibles is a gain in information
                 player.possibles = set()
                 got_info = True
@@ -272,6 +280,9 @@ class Engine:
                 ctr += 1
         print(s)
 
+PICKLE_STATE = 'engine_state.pkl'
+PICKLE_GAME = 'game_play.pkl'
+
 
 def main():
     num_players = int(input("Enter Number of Players: "))
@@ -279,11 +290,24 @@ def main():
     my_hand = input("Enter your hand, comma separated: ").split(',')
     eng = Engine(num_players=num_players, my_player_number=my_player_number, my_hand=my_hand)
 
-    # def doonexit(*args):
-    #     print('exiting')
-    #     print(eng.turn_sequence)
-    #
-    # atexit.register(doonexit)
+    def dump_engine_state(*args):
+        print(f'Dumping Pickled Engine State to {PICKLE_STATE}')
+        with open(PICKLE_STATE, 'wb') as f:
+            dill.dump(eng, f)
+
+    def dump_gameplay(*args):
+        gameplay_info = [
+            eng.num_players,
+            eng.my_player_number,
+            eng.my_hand,
+            eng.turn_sequence
+        ]
+        print(f'Dumping Gameplay Info to {PICKLE_GAME}')
+        with open(PICKLE_GAME, 'wb') as f:
+            dill.dump(gameplay_info, f)
+
+    atexit.register(dump_engine_state)
+    atexit.register(dump_gameplay)
 
     eng.run()
 

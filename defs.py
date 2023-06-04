@@ -11,7 +11,7 @@ ALL_CARDS = {value for category in CATEGORIES for value in category.__members__}
 NUM_CARDS = len(ALL_CARDS)
 
 
-class ClueCardSet:
+class ClueCardSet(object):
     def __set_name__(self, owner, name):
         self.name = name + '_dict'
 
@@ -68,6 +68,12 @@ class Turn(object):
         self.revealed_card = None
         self.suggestion: set[str] = set(suggestion)
         self.possible_reveals: set[str] = set(suggestion)
+        self.totally_processed = False
         self.is_pass = is_pass
-        # Consider 'passes' to be "totally processed"
-        self.totally_processed = False or self.is_pass
+
+        if self.is_pass:
+            # Consider 'passes' to be "totally processed"
+            self.totally_processed = True
+            self.revealer = None
+            self.possible_reveals = set()
+            self.suggestion = set()
