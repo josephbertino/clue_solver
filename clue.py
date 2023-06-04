@@ -317,15 +317,13 @@ if __name__ == '__main__':
 
 
 """TODOs in order of descending priority"""
-# TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
-
 # TODO Spell checking inputs
 
-# TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue, and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
+# TODO reconsider which past Turns are shown... maybe only show turns with len(possible_reveals) > 1?
 
-# TODO lets say a player's hand is known for all but one card. if there is an unsolved turn, the player's possibles can ONLY come from the turn.possible_reveals. And what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
-
-# TODO reconsider which past Turns are shown... maybe only show unsolved?
+# TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
+# dependent^^ TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue, and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
+# dependent^^ TODO lets say a player's hand is known for all but one card. if there is an unsolved turn, the player's possibles can ONLY come from the turn.possible_reveals. And what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
 
 # TODO there's probably a better way to keep track of which cards are still possible clues. like a dict.
 
