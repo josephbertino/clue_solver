@@ -1,7 +1,7 @@
 import atexit
 import dill
 
-from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS)
+from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS, ALL_CARDS)
 
 class Engine(object):
 
@@ -76,7 +76,7 @@ class Engine(object):
         """Player takes turn"""
         print(f"\n-- Player {suggester.number} {'(YOU!)' if suggester == self.my_player else ''} takes turn")
 
-        parameters = input("-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, or 'PASS'): ")
+        parameters = handle_input("-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, or 'PASS'): ")
         if parameters.upper().strip() == 'PASS':
             self.turn_sequence.append(Turn(number=turn_number, is_pass=True))
             return False
@@ -89,7 +89,7 @@ class Engine(object):
 
         if turn.revealer is not None and turn.suggester.is_me:
             # If I was the suggester and a card was revealed, store turn.revealed_card
-            turn.revealed_card = input(f"!! Player {turn.suggester.number} is You! What card did you see? ")
+            turn.revealed_card = handle_input(f"!! Player {turn.suggester.number} is You! What card did you see? ")
 
         self.one_time_turn_deductions(turn)
         self.turn_sequence.append(turn)
@@ -284,10 +284,32 @@ PICKLE_STATE = 'engine_state.pkl'
 PICKLE_GAME = 'game_play.pkl'
 
 
+def handle_input(msg: str = 'Default Prompt:'):
+    """
+    Input received from user will be a comma-delimited string.
+    For all non-numeric entries, check against list of playing cards (e.g. 'White') and other allowed phrases (e.g. 'PASS')
+    :param msg: The prompt to display to the user
+    :return: the original input from user, once that input has been validated
+    """
+    while True:
+        valid_input = True
+        user_input = input(msg)
+        for item in user_input.split(','):
+            if item.isalpha():
+                item = item.lower()
+                if item not in ALL_CARDS and not item == 'pass':
+                    valid_input = False
+                    print(f" ! ! Unable to recognize input '{item}'. Please try again...")
+                    break
+        if valid_input:
+            break
+    return user_input
+
+
 def main():
-    num_players = int(input("Enter Number of Players: "))
-    my_player_number = int(input("Enter My Player Num: "))
-    my_hand = input("Enter your hand, comma separated: ").split(',')
+    num_players = int(handle_input("Enter Number of Players: "))
+    my_player_number = int(handle_input("Enter My Player Num: "))
+    my_hand = handle_input("Enter your hand, comma separated: ").split(',')
     eng = Engine(num_players=num_players, my_player_number=my_player_number, my_hand=my_hand)
 
     def dump_engine_state(*args):
@@ -317,8 +339,6 @@ if __name__ == '__main__':
 
 
 """TODOs in order of descending priority"""
-# TODO Spell checking inputs
-
 # TODO reconsider which past Turns are shown... maybe only show turns with len(possible_reveals) > 1?
 
 # TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
