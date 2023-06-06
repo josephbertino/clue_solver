@@ -1,7 +1,7 @@
 import atexit
 import dill
 
-from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS, ALL_CARDS)
+from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS, ALL_CARDS, NOBODY)
 
 class Engine(object):
 
@@ -14,7 +14,7 @@ class Engine(object):
         self.accusation_dict = {}
 
         # Initialize player list with blank player
-        self._player_list: list[Player] = [Player()]
+        self._player_list: list[Player] = [NOBODY]
         self.all_players: list[Player] = []  # All active players in game
         self.other_players: list[Player] = []  # All players besides me
         self.num_players: int = num_players
@@ -83,13 +83,15 @@ class Engine(object):
 
         suggestion, revealer_num = parameters.rsplit(sep=',', maxsplit=1)
         revealer_num = int(revealer_num)
+        if revealer_num < 0:
+            revealer_num = 0  # Player == NOBODY
         suggestion = suggestion.split(',')
-        revealer = self.get_player(revealer_num) if revealer_num > 0 else None
+        revealer = self.get_player(revealer_num)
         turn = Turn(number=turn_number, suggestion=suggestion, suggester=suggester, revealer=revealer)
 
-        if turn.revealer is not None and turn.suggester.is_me:
+        if turn.suggester.is_me and turn.revealer is not NOBODY:
             # If I was the suggester and a card was revealed, store turn.revealed_card
-            turn.revealed_card = handle_input(f"!! Player {turn.suggester.number} is You! What card did you see? ")
+            turn.revealed_card = handle_input(f"   Player {turn.suggester.number} is You! What card did you see? ")
 
         self.one_time_turn_deductions(turn)
         self.turn_sequence.append(turn)
@@ -106,13 +108,13 @@ class Engine(object):
         # A 'totally processed' turn is one in which we know that the revealer's HAND overlaps
         #   with the suggestion (which happens automatically when there is no revealer, or the revealer is Me),
         #   so there's no new information to gain about the revealer's HAND from further processing
-        if turn.revealer is None:
+        if turn.revealer is NOBODY:
             turn.totally_processed = True
             turn.possible_reveals = set()
         elif turn.revealer.is_me:
             turn.totally_processed = True
             turn.possible_reveals &= self.my_player.hand
-        elif turn.revealed_card:
+        elif turn.suggester.is_me:
             # Revealed card will be removed from player POSSIBLES during process_turn() step
             turn.possible_reveals = {turn.revealed_card}
 
@@ -124,8 +126,9 @@ class Engine(object):
         :return list[Player]:
         """
         sug_num = turn.suggester.number
-        rev_num = 0 if (turn.revealer is None) else turn.revealer.number
+        rev_num = turn.revealer.number
 
+        # TODO Can return sets here?
         if rev_num < 1:  # No revealed card... return everyone BUT the suggester
             return self._player_list[sug_num + 1:] + self._player_list[1:sug_num]
         elif sug_num < rev_num:
@@ -173,16 +176,16 @@ class Engine(object):
         return False
 
     def offer_clue_intel(self, ready: bool = False):
-        print(f"\n** Known Clues: {self.accusation_dict}")
         if not ready:
             print("\n?? Past Turns:")
             for turn in self.turn_sequence:
-                if turn.is_pass:
+                if turn.is_pass or turn.suggester.is_me:
                     continue
-                if turn.revealer and turn.totally_processed and len(turn.possible_reveals) > 1:
+                if turn.totally_processed and len(turn.possible_reveals) > 1:
                     # Possibly trim turn.possible_reveals for turns that are already .totally_processed
                     turn.possible_reveals &= (turn.revealer.hand | turn.revealer.possibles)
-                print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number if turn.revealer else None} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
+                print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
+        print(f"\n** Known Clues: {self.accusation_dict}")
 
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
@@ -339,12 +342,10 @@ if __name__ == '__main__':
 
 
 """TODOs in order of descending priority"""
-# TODO reconsider which past Turns are shown... maybe only show turns with len(possible_reveals) > 1?
-
 # TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
-# dependent^^ TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue, and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
-# dependent^^ TODO lets say a player's hand is known for all but one card. if there is an unsolved turn, the player's possibles can ONLY come from the turn.possible_reveals. And what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
 
-# TODO there's probably a better way to keep track of which cards are still possible clues. like a dict.
+# TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue, and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
+
+# TODO lets say a player's hand is known for all but one card. if there is an unsolved turn, the player's possibles can ONLY come from the turn.possible_reveals. And what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
 
 # TODO HUGE: What if I just implemented the whole solving apparatus like a table, like in the actual board game? I'd need a whole new array of functions to perform elimination. But ultimately it would be the same thing. And I don't want to belabor this effort. The whole point is to build a Clue deduction engine, not to keep rebuilding it once I have one that works. Unless it was going to help me understand python more. Maybe using pandas

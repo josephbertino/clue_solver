@@ -51,6 +51,10 @@ class Player(object):
             self.possibles = set([] if is_me else ALL_CARDS - set(cards))
 
 
+# A No-Op player, useful for when a suggestion does not have a revealer
+NOBODY = Player()
+
+
 class Turn(object):
 
     suggestion = ClueCardSet()
