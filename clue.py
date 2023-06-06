@@ -128,7 +128,6 @@ class Engine(object):
         sug_num = turn.suggester.number
         rev_num = turn.revealer.number
 
-        # TODO Can return sets here?
         if rev_num < 1:  # No revealed card... return everyone BUT the suggester
             return self._player_list[sug_num + 1:] + self._player_list[1:sug_num]
         elif sug_num < rev_num:
@@ -342,10 +341,4 @@ if __name__ == '__main__':
 
 
 """TODOs in order of descending priority"""
-# TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
-
-# TODO if a clue is found, try to pinpoint who has non-clue cards (e.g. if the Wrench is the Weapon Clue, and the Knife is only in one person's POSSIBLES, then it must be in their HAND!
-
-# TODO lets say a player's hand is known for all but one card. if there is an unsolved turn, the player's possibles can ONLY come from the turn.possible_reveals. And what if you extend this logic to multiple turns. What if a player has 2 unknown cards and 2 unsolved turns that don't intersect in their possible reveals?
-
-# TODO HUGE: What if I just implemented the whole solving apparatus like a table, like in the actual board game? I'd need a whole new array of functions to perform elimination. But ultimately it would be the same thing. And I don't want to belabor this effort. The whole point is to build a Clue deduction engine, not to keep rebuilding it once I have one that works. Unless it was going to help me understand python more. Maybe using pandas
+# TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. either a player HAS something (add to their hand) or they LACK something (remove from possibles) from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
