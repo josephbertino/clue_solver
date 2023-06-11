@@ -5,7 +5,6 @@ WEAPON = enum.Enum('Weapon', ['rope', 'pipe', 'wrench', 'candlestick', 'knife', 
 ROOM = enum.Enum('Room', ['billiard', 'lounge', 'conservatory', 'kitchen', 'hall',
                           'dining', 'study', 'library', 'ballroom'])
 
-
 CATEGORIES = [SUSPECT, WEAPON, ROOM]
 ALL_CARDS = {value for category in CATEGORIES for value in category.__members__}
 NUM_CARDS = len(ALL_CARDS)

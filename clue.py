@@ -27,6 +27,7 @@ class Engine(object):
         return self._player_list[player_num]
 
     def setup_players(self):
+        """Generate Player instances for game, including self.my_player, who is You, the user"""
         num_active_cards = NUM_CARDS - 3
         # Not all players may get the same number of cards
         cards_per_player = num_active_cards // self.num_players
@@ -50,11 +51,7 @@ class Engine(object):
 
             """Log game details to output"""
             print(f"\n----------------------------------------------------------")
-            print(f"Turn #{turn_number}")
-            for player in self.all_players:
-                print(f"++ Player {player.number} {'(YOU!)' if player.is_me else f'[{len(player.hand)}/{player.size_hand}]'}")
-                print(f"      Hand:      {sorted(player.hand)}")
-                self.print_cards("      Possibles: ", player.possibles_dict)
+            self.print_turn_player_details(turn_number)
 
             self.offer_clue_intel()
 
@@ -68,18 +65,17 @@ class Engine(object):
 
     def take_turn(self, turn_number, suggester: Player):
         """
-
-        :param turn_number:
-        :param suggester:
         :return bool: True if turn was taken, False if player passed
         """
-        """Player takes turn"""
         print(f"\n-- Player {suggester.number} {'(YOU!)' if suggester == self.my_player else ''} takes turn")
 
-        parameters = handle_input("-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, or 'PASS'): ")
+        parameters = handle_input("-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, 'PASS', or 'UPDATE'): ")
         if parameters.upper().strip() == 'PASS':
             self.turn_sequence.append(Turn(number=turn_number, is_pass=True))
             return False
+        elif parameters.upper().strip() == 'UPDATE':
+            self.user_updates_hands(turn_number)
+            return self.take_turn(turn_number, suggester)
 
         suggestion, revealer_num = parameters.rsplit(sep=',', maxsplit=1)
         revealer_num = int(revealer_num)
@@ -117,6 +113,30 @@ class Engine(object):
         elif turn.suggester.is_me:
             # Revealed card will be removed from player POSSIBLES during process_turn() step
             turn.possible_reveals = {turn.revealed_card}
+
+    def user_updates_hands(self, turn_number):
+        """
+        User identifies whether they **think** a player HAS or LACKS a certain card
+            This updates that player's HAND or POSSIBLES, and proceeds with the turn's logical deductions
+            It is entirely possible for an update provided by the user to be incorrect, which
+            will effectively render this Engine unreliable for the remainder of the game. Use with caution.
+        """
+        prompt = "-- What's the information update you'd like to apply? Enter in the form 'PLAYER_NUM [HAS|LACKS] CARD': "
+        parameters = handle_input(prompt, splitter=' ')
+        player_num, action, card = parameters.split(' ')
+        player = self.get_player(int(player_num))
+        if action == 'has':
+            msg = f" > > Adding '{card}' to Player {player_num}' HAND "
+            player.hand |= {card}
+            self.remove_set_from_possibles(self.all_players, {card})
+        else:  # action == 'lacks'
+            msg = f"Removing '{card}' from Player {player_num}' POSSIBLES "
+            player.possibles -= {card}
+        msg += 'and re-running deductions'
+        print(msg)
+        self.process_turns_for_info()
+        self.print_turn_player_details(turn_number)
+        self.offer_clue_intel()
 
     def get_non_revealing_responders(self, turn: Turn):
         """
@@ -168,8 +188,6 @@ class Engine(object):
             for turn in self.turn_sequence:
                 if not turn.totally_processed:
                     turn.possible_reveals -= self.accusation
-            # We've shrunk player possibles, so this can't hurt
-            self.check_players_hand_size()
             return True
 
         return False
@@ -192,6 +210,7 @@ class Engine(object):
 
     def process_turns_for_info(self):
         """
+        Perform deductions of who-has-what based on the information available from the self.turn_sequence.
         If a pass through the turn sequence yielded new info (narrowing down other players' hands),
             loop through the turn sequence again.
         """
@@ -203,12 +222,12 @@ class Engine(object):
                 if not turn.totally_processed:
                     got_info |= self.process_turn(turn)
             got_info |= self.determine_clues()
+            got_info |= self.check_players_hand_size()
 
     def process_turn(self, turn: Turn):
         if self.process_revealed_turn(turn):
             # We added to our knowledge of a player's HAND
             self.remove_set_from_possibles(players=self.other_players, cards={turn.revealed_card})
-            self.check_players_hand_size()
             return True
         return False
 
@@ -246,7 +265,7 @@ class Engine(object):
 
     def check_players_hand_size(self):
         """
-        1) If a Player's HAND and POSSIBLES combined is equal to size_hand, make them all part of HAND
+        1) If a Player's HAND and POSSIBLES combined is equal to size_hand, make them all part of their HAND
         2) If a Player has HAND size equal to size_hand, wipe out their POSSIBLES
         :return: bool Whether a player's entire hand was determined
         """
@@ -267,11 +286,29 @@ class Engine(object):
 
     @staticmethod
     def remove_set_from_possibles(players: list[Player], cards: set[str]):
+        """
+        Remove a set of cards from the POSSIBLES of the given Player instances
+        :param players:
+        :param cards:
+        """
         for player in players:
             player.possibles -= cards  # Removal from set
 
+    def print_turn_player_details(self, turn_number):
+        print(f"Turn #{turn_number}")
+        for player in self.all_players:
+            print(
+                f"++ Player {player.number} {'(YOU!)' if player.is_me else f'[{len(player.hand)}/{player.size_hand}]'}")
+            print(f"      Hand:      {sorted(player.hand)}")
+            self.print_cards("      Possibles: ", player.possibles_dict)
+
     @staticmethod
     def print_cards(prefix: str, cards: dict):
+        """
+        Prints the cards from a ClueCardSet, separated by category
+        :param prefix:
+        :param cards:
+        """
         s = prefix
         white = f"\n{' ' * len(prefix)}"
         ctr = 0
@@ -284,22 +321,23 @@ class Engine(object):
 
 PICKLE_STATE = 'engine_state.pkl'
 PICKLE_GAME = 'game_play.pkl'
+ALLOWABLE_INPUTS = ['pass', 'update', 'has', 'lacks']
 
 
-def handle_input(msg: str = 'Default Prompt:'):
+def handle_input(prompt: str = 'Default Prompt:', splitter: str = ','):
     """
     Input received from user will be a comma-delimited string.
     For all non-numeric entries, check against list of playing cards (e.g. 'White') and other allowed phrases (e.g. 'PASS')
-    :param msg: The prompt to display to the user
-    :return: the original input from user, once that input has been validated
+    :param prompt:      The prompt to display to the user
+    :param splitter:    The char to split input on
+    :return: the original input from user, lower(), once that input has been validated
     """
     while True:
         valid_input = True
-        user_input = input(msg)
-        for item in user_input.split(','):
+        user_input = input(prompt).lower()
+        for item in user_input.split(splitter):
             if item.isalpha():
-                item = item.lower()
-                if item not in ALL_CARDS and not item == 'pass':
+                if item not in ALL_CARDS and item not in ALLOWABLE_INPUTS:
                     valid_input = False
                     print(f" ! ! Unable to recognize input '{item}'. Please try again...")
                     break
@@ -309,6 +347,10 @@ def handle_input(msg: str = 'Default Prompt:'):
 
 
 def main():
+    """
+    Launch the Engine, which operates from the user's POV in playing the game.
+    :return:
+    """
     num_players = int(handle_input("Enter Number of Players: "))
     my_player_number = int(handle_input("Enter My Player Num: "))
     my_hand = handle_input("Enter your hand, comma separated: ").split(',')
@@ -338,7 +380,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-"""TODOs in order of descending priority"""
-# TODO big change here... allow for a turn to be intercepted by ("UPDATE") where i update the possibles a player has. either a player HAS something (add to their hand) or they LACK something (remove from possibles) from there, perform the check hand size, reduce from hand, and discover clues, but then return to the taking of the turn
