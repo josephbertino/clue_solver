@@ -1,5 +1,6 @@
 import atexit
 import dill
+import time
 
 from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS, ALL_CARDS, NOBODY)
 
@@ -27,7 +28,7 @@ class Engine(object):
         return self._player_list[player_num]
 
     def setup_players(self):
-        """Generate Player instances for game, including self.my_player, who is You, the user"""
+        """Generate Player instances for game, including self.my_player (You, the user)"""
         num_active_cards = NUM_CARDS - 3
         # Not all players may get the same number of cards
         cards_per_player = num_active_cards // self.num_players
@@ -202,7 +203,7 @@ class Engine(object):
                     # Possibly trim turn.possible_reveals for turns that are already .totally_processed
                     turn.possible_reveals &= (turn.revealer.hand | turn.revealer.possibles)
                 print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
-        print(f"\n** Known Clues: {self.accusation_dict}")
+        print(f"\n** Murder Cards: {self.accusation_dict}")
 
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
@@ -300,7 +301,8 @@ class Engine(object):
             print(
                 f"++ Player {player.number} {'(YOU!)' if player.is_me else f'[{len(player.hand)}/{player.size_hand}]'}")
             print(f"      Hand:      {sorted(player.hand)}")
-            self.print_cards("      Possibles: ", player.possibles_dict)
+            if len(player.possibles):
+                self.print_cards("      Possibles: ", player.possibles_dict)
 
     @staticmethod
     def print_cards(prefix: str, cards: dict):
@@ -351,9 +353,16 @@ def main():
     Launch the Engine, which operates from the user's POV in playing the game.
     :return:
     """
+    print()
+    print("Welcome to the Clue Deduction Engine!\n")
+
+    print("**IMPORTANT**: Deal cards to players according to gameplay rotation. E.g. Player 1 gets the first card dealt, then Player 2...\n")
+
+    time.sleep(1)
+
     num_players = int(handle_input("Enter Number of Players: "))
-    my_player_number = int(handle_input("Enter My Player Num: "))
-    my_hand = handle_input("Enter your hand, comma separated: ").split(',')
+    my_player_number = int(handle_input("Enter Your Player Number (gameplay rotation position): "))
+    my_hand = handle_input("Enter Your Hand, comma separated: ").split(',')
     eng = Engine(num_players=num_players, my_player_number=my_player_number, my_hand=my_hand)
 
     def dump_engine_state(*args):
