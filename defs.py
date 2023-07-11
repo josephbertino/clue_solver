@@ -8,6 +8,26 @@ ROOM = enum.Enum('Room', ['billiard', 'lounge', 'conservatory', 'kitchen', 'hall
 CATEGORIES = [SUSPECT, WEAPON, ROOM]
 ALL_CARDS = {value for category in CATEGORIES for value in category.__members__}
 NUM_CARDS = len(ALL_CARDS)
+CARD_TO_CATEGORY = {m: c.__name__ for c in CATEGORIES for m in c.__members__}
+SORT_ORDER = {c.__name__:i for i, c in enumerate(CATEGORIES)}
+
+
+class COLORS:
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+    BOLD = '\033[1m'
+    ITALIC = '\033[3m'
+    UNDERLINE = '\033[4m'
+    INVERSE = '\033[7m'
+    RESET = '\033[0m'
+
+
+COLORMAP = dict(Suspect=COLORS.RED, Weapon=COLORS.YELLOW, Room=COLORS.BLUE)
 
 
 class ClueCardSet(object):

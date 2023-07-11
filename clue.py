@@ -2,7 +2,8 @@ import atexit
 import dill
 import time
 
-from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS, ALL_CARDS, NOBODY)
+from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS, ALL_CARDS, NOBODY,
+                  COLORS, COLORMAP, CARD_TO_CATEGORY, SORT_ORDER)
 
 class Engine(object):
 
@@ -51,7 +52,7 @@ class Engine(object):
             suggester = self.get_player(suggester_num)
 
             """Log game details to output"""
-            print(f"\n----------------------------------------------------------")
+            print_separator_line()
             self.print_turn_player_details(turn_number)
 
             self.offer_clue_intel()
@@ -68,7 +69,10 @@ class Engine(object):
         """
         :return bool: True if turn was taken, False if player passed
         """
-        print(f"\n-- Player {suggester.number} {'(YOU!)' if suggester == self.my_player else ''} takes turn")
+        if suggester == self.my_player:
+            print_color(COLORS.WHITE, f"\n-- Player {suggester.number} '(YOU!)' takes turn")
+        else:
+            print(f"\n-- Player {suggester.number} takes turn")
 
         parameters = handle_input("-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, 'PASS', or 'UPDATE'): ")
         if parameters.upper().strip() == 'PASS':
@@ -127,14 +131,15 @@ class Engine(object):
         player_num, action, card = parameters.split(' ')
         player = self.get_player(int(player_num))
         if action == 'has':
-            msg = f" > > Adding '{card}' to Player {player_num}' HAND "
+            msg = f" > > Adding '{color_cards(card)}' to Player {player_num}' HAND "
             player.hand |= {card}
             self.remove_set_from_possibles(self.all_players, {card})
         else:  # action == 'lacks'
-            msg = f"Removing '{card}' from Player {player_num}' POSSIBLES "
+            msg = f"Removing '{color_cards(card)}' from Player {player_num}' POSSIBLES "
             player.possibles -= {card}
         msg += 'and re-running deductions'
         print(msg)
+        print_separator_line()
         self.process_turns_for_info()
         self.print_turn_player_details(turn_number)
         self.offer_clue_intel()
@@ -202,8 +207,10 @@ class Engine(object):
                 if turn.totally_processed and len(turn.possible_reveals) > 1:
                     # Possibly trim turn.possible_reveals for turns that are already .totally_processed
                     turn.possible_reveals &= (turn.revealer.hand | turn.revealer.possibles)
+                # TODO COLOR and sort the Suggestion
                 print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
-        print(f"\n** Murder Cards: {self.accusation_dict}")
+        if self.accusation:
+            print(f"\n** Murder Cards: {color_cards(self.accusation)}")
 
     def ready_to_accuse(self):
         """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
@@ -298,9 +305,11 @@ class Engine(object):
     def print_turn_player_details(self, turn_number):
         print(f"Turn #{turn_number}")
         for player in self.all_players:
-            print(
-                f"++ Player {player.number} {'(YOU!)' if player.is_me else f'[{len(player.hand)}/{player.size_hand}]'}")
-            print(f"      Hand:      {sorted(player.hand)}")
+            if player.is_me:
+                print_color(COLORS.WHITE, f"++ Player {player.number} '(YOU!)'")
+            else:
+                print(f"++ Player {player.number} [{len(player.hand)}/{player.size_hand}]")
+            print(f"      Hand:      {color_cards(player.hand)}")
             if len(player.possibles):
                 self.print_cards("      Possibles: ", player.possibles_dict)
 
@@ -312,14 +321,47 @@ class Engine(object):
         :param cards:
         """
         s = prefix
-        white = f"\n{' ' * len(prefix)}"
+        space = f"\n{' ' * len(prefix)}"
         ctr = 0
         for cat in CATEGORIES:
+            # TODO I don't think I need the first part of this Intersection.
+            #   just cat_cards = cards.get(....)
             cat_cards = set(cat.__members__) & cards.get(cat.__name__, set())
             if cat_cards:
-                s += f"{white if ctr else ''}{cat.__name__}: {cat_cards}"
+                s += f"{space if ctr else ''}{cat.__name__}: {color_cards(cat_cards)}"
                 ctr += 1
         print(s)
+
+
+def print_separator_line():
+    print(f"\n----------------------------------------------------------")
+
+
+def print_color(color, msg):
+    print(color + msg + COLORS.RESET)
+
+
+def _colorize(card):
+    color_code = COLORMAP[CARD_TO_CATEGORY[card.lower()]]
+    return color_code + card + COLORS.RESET
+
+
+def color_cards(cards):
+    """
+    Wrap input item(s) in ANSI color codes for colorful output to the console
+        The color applied to each item depends on what Clue Category it belongs to (Suspect, Room, Weapon)
+    :param str|iter input: String or Iterable of Strings
+    :return: a string wrapping the input item(s) in ANSI color codes (with RESET terminator included)
+    """
+    # TODO need to validate if items are in any of the categories
+    if isinstance(cards, str):
+        return _colorize(cards)
+    elif hasattr(cards, '__iter__'):
+        sorted_cards = sorted(cards, key=lambda x: (SORT_ORDER[CARD_TO_CATEGORY[x]], x))
+        return '[' + ', '.join([_colorize(card) for card in sorted_cards]) + ']'
+    else:
+        raise ValueError("Input to color_card() neither a string nor an iterable!")
+
 
 PICKLE_STATE = 'engine_state.pkl'
 PICKLE_GAME = 'game_play.pkl'
@@ -341,7 +383,7 @@ def handle_input(prompt: str = 'Default Prompt:', splitter: str = ','):
             if item.isalpha():
                 if item not in ALL_CARDS and item not in ALLOWABLE_INPUTS:
                     valid_input = False
-                    print(f" ! ! Unable to recognize input '{item}'. Please try again...")
+                    print_color(COLORS.INVERSE, f" ! ! Unable to recognize input '{item}'. Please try again...")
                     break
         if valid_input:
             break
