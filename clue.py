@@ -207,8 +207,7 @@ class Engine(object):
                 if turn.totally_processed and len(turn.possible_reveals) > 1:
                     # Possibly trim turn.possible_reveals for turns that are already .totally_processed
                     turn.possible_reveals &= (turn.revealer.hand | turn.revealer.possibles)
-                # TODO COLOR and sort the Suggestion
-                print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number} Suggestion:{turn.suggestion} Possible Reveals:{turn.possible_reveals}")
+                print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number} Suggestion:{color_cards(turn.suggestion)} Possible Reveals:{color_cards(turn.possible_reveals)}")
         if self.accusation:
             print(f"\n** Murder Cards: {color_cards(self.accusation)}")
 
@@ -308,7 +307,7 @@ class Engine(object):
             if player.is_me:
                 print_color(COLORS.WHITE, f"++ Player {player.number} '(YOU!)'")
             else:
-                print(f"++ Player {player.number} [{len(player.hand)}/{player.size_hand}]")
+                print(f"++ {COLORS.MAGENTA}Player {player.number}{COLORS.RESET} [{len(player.hand)}/{player.size_hand}]")
             print(f"      Hand:      {color_cards(player.hand)}")
             if len(player.possibles):
                 self.print_cards("      Possibles: ", player.possibles_dict)
@@ -324,9 +323,7 @@ class Engine(object):
         space = f"\n{' ' * len(prefix)}"
         ctr = 0
         for cat in CATEGORIES:
-            # TODO I don't think I need the first part of this Intersection.
-            #   just cat_cards = cards.get(....)
-            cat_cards = set(cat.__members__) & cards.get(cat.__name__, set())
+            cat_cards = cards.get(cat.__name__, set())
             if cat_cards:
                 s += f"{space if ctr else ''}{cat.__name__}: {color_cards(cat_cards)}"
                 ctr += 1
@@ -350,10 +347,9 @@ def color_cards(cards):
     """
     Wrap input item(s) in ANSI color codes for colorful output to the console
         The color applied to each item depends on what Clue Category it belongs to (Suspect, Room, Weapon)
-    :param str|iter input: String or Iterable of Strings
+    :param str|iter cards: String or Iterable of Strings
     :return: a string wrapping the input item(s) in ANSI color codes (with RESET terminator included)
     """
-    # TODO need to validate if items are in any of the categories
     if isinstance(cards, str):
         return _colorize(cards)
     elif hasattr(cards, '__iter__'):
