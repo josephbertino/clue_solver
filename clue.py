@@ -84,7 +84,7 @@ class Engine(object):
 
         suggestion, revealer_num = parameters.rsplit(sep=',', maxsplit=1)
         revealer_num = int(revealer_num)
-        if revealer_num < 0:
+        if revealer_num < 1:
             revealer_num = 0  # Player == NOBODY
         suggestion = suggestion.split(',')
         revealer = self.get_player(revealer_num)
@@ -126,9 +126,9 @@ class Engine(object):
             It is entirely possible for an update provided by the user to be incorrect, which
             will effectively render this Engine unreliable for the remainder of the game. Use with caution.
         """
-        prompt = "-- What's the information update you'd like to apply? Enter in the form 'PLAYER_NUM [HAS|LACKS] CARD': "
-        parameters = handle_input(prompt, splitter=' ')
-        player_num, action, card = parameters.split(' ')
+        prompt = "-- What's the information update you'd like to apply? Enter in the form '<player_num>,[has|lacks],<card>': "
+        parameters = handle_input(prompt)
+        player_num, action, card = parameters.split(',')
         player = self.get_player(int(player_num))
         if action == 'has':
             msg = f" > > Adding '{color_cards(card)}' to Player {player_num}' HAND "
@@ -400,7 +400,7 @@ def main():
 
     num_players = int(handle_input("Enter Number of Players: "))
     my_player_number = int(handle_input("Enter Your Player Number (gameplay rotation position): "))
-    my_hand = handle_input("Enter Your Hand, comma separated: ").split(',')
+    my_hand = handle_input("Enter Your Hand, comma separated (e.g. 'xxx,yyy,zzz,...'): ").split(',')
     eng = Engine(num_players=num_players, my_player_number=my_player_number, my_hand=my_hand)
 
     def dump_engine_state(*args):

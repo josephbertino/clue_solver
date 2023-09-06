@@ -23,3 +23,25 @@ Run file `clue.py` from the console or on your IDE of choice.
   * SUSPECT = ['white', 'plum', 'peacock', 'scarlet', 'mustard', 'green']
   * WEAPON = ['rope', 'pipe', 'wrench', 'candlestick', 'knife', 'revolver']
   * ROOM = ['billiard', 'lounge', 'conservatory', 'kitchen', 'hall', 'dining', 'study', 'library', 'ballroom']
+
+# How to enter hands and other turn instructions
+
+**Enter Your Hand at the Game's Start**
+  + Enter the contents of your hand as "cards" from the `SUSPECT`, `WEAPON`, or `ROOM` lists defined in `defs.py`.
+  + No whitespace, only alpha-strings separated by commas
+  + Format: `card1,card2,card3...`
+
+**Enter a Turn Suggestion + Revealer Information**
+  + Entry must be comma-separated and without spaces
+  + Format: `card_1,card_2,card_3,revealer_number`
+    + e.g. 'billiard,plum,knife,2'
+    + If the suggestion went around without any Player making a reveal, enter `0` for the `revealer_number`
+
+**Passing on a Turn (the Player does not make a suggestion)**
+  + Enter: 'pass'
+
+**Manually Updating a Player's Hand Mid-Turn**
+  + Enter: 'update'
+  + Then enter a line of the format (comma-separated, no spaces)
+    + `<player_num>,[has|lacks],<card>`
+    + e.g. '2,lacks,rope'
