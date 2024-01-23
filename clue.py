@@ -74,8 +74,10 @@ class Engine(object):
         else:
             print(f"\n-- Player {suggester.number} takes turn")
 
-        parameters = handle_input("-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, 'PASS', or 'UPDATE'): ")
-        if parameters.upper().strip() == 'PASS':
+        parameters = handle_input(
+            "-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, 'PASS', or 'UPDATE'): "
+        )
+        if parameters.upper().strip() == "PASS":
             self.turn_sequence.append(Turn(number=turn_number, is_pass=True))
             return False
         elif parameters.upper().strip() == 'UPDATE':
@@ -88,11 +90,18 @@ class Engine(object):
             revealer_num = 0  # Player == NOBODY
         suggestion = suggestion.split(',')
         revealer = self.get_player(revealer_num)
-        turn = Turn(number=turn_number, suggestion=suggestion, suggester=suggester, revealer=revealer)
+        turn = Turn(
+            number=turn_number,
+            suggestion=suggestion,
+            suggester=suggester,
+            revealer=revealer,
+        )
 
         if turn.suggester.is_me and turn.revealer is not NOBODY:
             # If I was the suggester and a card was revealed, store turn.revealed_card
-            turn.revealed_card = handle_input(f"   Player {turn.suggester.number} is You! What card did you see? ")
+            turn.revealed_card = handle_input(
+                f"   Player {turn.suggester.number} is You! What card did you see? "
+            )
 
         self.one_time_turn_deductions(turn)
         self.turn_sequence.append(turn)
@@ -104,7 +113,9 @@ class Engine(object):
             return
 
         # Non-revealing responders from a turn don't have any of the suggested cards. Reduce their POSSIBLES
-        self.remove_set_from_possibles(players=self.get_non_revealing_responders(turn), cards=turn.suggestion)
+        self.remove_set_from_possibles(
+            players=self.get_non_revealing_responders(turn), cards=turn.suggestion
+        )
 
         # A 'totally processed' turn is one in which we know that the revealer's HAND overlaps
         #   with the suggestion (which happens automatically when there is no revealer, or the revealer is Me),
@@ -176,20 +187,26 @@ class Engine(object):
             if len(cat_cards_not_in_hands) == 1:
                 self.accusation |= cat_cards_not_in_hands
             elif len(cat_cards_not_in_hands) < 1:
-                raise ValueError(f"All cards from the same category are in play, which is impossible!: {category.__name__}")
+                raise ValueError(
+                    f"All cards from the same category are in play, which is impossible!: {category.__name__}"
+                )
 
             # If a card is not in any HANDS or POSSIBLES, it must be a Clue
             inactive_cat_cards = set(category.__members__.keys()) - hands_and_possibles
             if len(inactive_cat_cards) == 1:
                 self.accusation |= inactive_cat_cards
             elif len(inactive_cat_cards) > 1:
-                raise ValueError(f"Multiple cards from the same category are out of play!: {category.__name__}:{inactive_cat_cards}")
+                raise ValueError(
+                    f"Multiple cards from the same category are out of play!: {category.__name__}:{inactive_cat_cards}"
+                )
 
         if len(self.accusation) > len(old_accusation):
             # If we gained a new clue, make sure it's removed from player POSSIBLES
             #    (We may have determined a clue because all other cards in that category were in player HANDS...
             #    in which case that card might still be lingering in a player's POSSIBLE)
-            self.remove_set_from_possibles(players=self.other_players, cards=self.accusation)
+            self.remove_set_from_possibles(
+                players=self.other_players, cards=self.accusation
+            )
             # A Clue could also not be a revealed card in a Turn
             for turn in self.turn_sequence:
                 if not turn.totally_processed:
@@ -234,7 +251,9 @@ class Engine(object):
     def process_turn(self, turn: Turn):
         if self.process_revealed_turn(turn):
             # We added to our knowledge of a player's HAND
-            self.remove_set_from_possibles(players=self.other_players, cards={turn.revealed_card})
+            self.remove_set_from_possibles(
+                players=self.other_players, cards={turn.revealed_card}
+            )
             return True
         return False
 
@@ -307,7 +326,9 @@ class Engine(object):
             if player.is_me:
                 print_color(COLORS.WHITE, f"++ Player {player.number} '(YOU!)'")
             else:
-                print(f"++ {COLORS.MAGENTA}Player {player.number}{COLORS.RESET} [{len(player.hand)}/{player.size_hand}]")
+                print(
+                    f"++ {COLORS.MAGENTA}Player {player.number}{COLORS.RESET} [{len(player.hand)}/{player.size_hand}]"
+                )
             print(f"      Hand:      {color_cards(player.hand)}")
             if len(player.possibles):
                 self.print_cards("      Possibles: ", player.possibles_dict)
@@ -379,7 +400,10 @@ def handle_input(prompt: str = 'Default Prompt:', splitter: str = ','):
             if item.isalpha():
                 if item not in ALL_CARDS and item not in ALLOWABLE_INPUTS:
                     valid_input = False
-                    print_color(COLORS.INVERSE, f" ! ! Unable to recognize input '{item}'. Please try again...")
+                    print_color(
+                        COLORS.INVERSE,
+                        f" ! ! Unable to recognize input '{item}'. Please try again...",
+                    )
                     break
         if valid_input:
             break
@@ -394,7 +418,9 @@ def main():
     print()
     print("Welcome to the Clue Deduction Engine!\n")
 
-    print("**IMPORTANT**: Deal cards to players according to gameplay rotation. E.g. Player 1 gets the first card dealt, then Player 2...\n")
+    print(
+        "**IMPORTANT**: Deal cards to players according to gameplay rotation. E.g. Player 1 gets the first card dealt, then Player 2...\n"
+    )
 
     time.sleep(1)
 
@@ -404,8 +430,8 @@ def main():
     eng = Engine(num_players=num_players, my_player_number=my_player_number, my_hand=my_hand)
 
     def dump_engine_state(*args):
-        print(f'Dumping Pickled Engine State to {PICKLE_STATE}')
-        with open(PICKLE_STATE, 'wb') as f:
+        print(f"Dumping Pickled Engine State to {PICKLE_STATE}")
+        with open(PICKLE_STATE, "wb") as f:
             dill.dump(eng, f)
 
     def dump_gameplay(*args):
@@ -413,7 +439,7 @@ def main():
             eng.num_players,
             eng.my_player_number,
             eng.my_hand,
-            eng.turn_sequence
+            eng.turn_sequence,
         ]
         print(f'Dumping Gameplay Info to {PICKLE_GAME}')
         with open(PICKLE_GAME, 'wb') as f:

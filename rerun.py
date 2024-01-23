@@ -21,11 +21,13 @@ def main():
     eng = Engine(num_players, my_player_num, my_hand)
     for turn in turn_sequence[1:]:  # Skip Turn 0; eng already has it
         eng_suggester, eng_revealer = get_turn_players(eng, turn)
-        new_turn = Turn(number=turn.number,
-                        suggestion=turn.suggestion,
-                        suggester=eng_suggester,
-                        revealer=eng_revealer,
-                        is_pass=turn.is_pass)
+        new_turn = Turn(
+            number=turn.number,
+            suggestion=turn.suggestion,
+            suggester=eng_suggester,
+            revealer=eng_revealer,
+            is_pass=turn.is_pass,
+        )
         if new_turn.suggester and new_turn.suggester.is_me:
             new_turn.revealed_card = turn.revealed_card
         eng.one_time_turn_deductions(new_turn)
