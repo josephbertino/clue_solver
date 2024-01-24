@@ -55,8 +55,8 @@ class Engine(object):
         leftover_cards = num_active_cards % self.num_players
         for i in range(1, self.num_players + 1):
             is_me = (i == self.my_player_number)
-            size_hand = min_cards_per_player + (1 if i <= leftover_cards else 0)
-            new_player = Player(number=i, size_hand=size_hand, is_me=is_me, cards=self.my_hand)
+            hand_size = min_cards_per_player + (1 if i <= leftover_cards else 0)
+            new_player = Player(number=i, size_hand=hand_size, is_me=is_me, cards=self.my_hand)
             if is_me:
                 self.my_player = new_player
             self._player_list.append(new_player)
@@ -251,42 +251,49 @@ class Engine(object):
         else:
             return self._player_list[sug_num + 1:] + self._player_list[1:rev_num]
 
-    def determine_clues(self):
+    def deduce_murder_cards(self):
+        """
+        Try to deduce a subset of the Murder Cards in this game (i.e. the accusation)
+            by examining all Players' HANDS and POSSIBLES
+
+        :return bool: Whether we deduced more of the Murder
+        """
         old_accusation = self.accusation.copy()
 
+        # Establish all cards that we know are held, as well as all cards still potentially held
         all_hands = set()
-        hands_and_possibles = set()
+        all_hands_and_possibles = set()
         for player in self.all_players:
             all_hands.update(player.hand)
-            hands_and_possibles.update(player.hand | player.possibles)
+            all_hands_and_possibles.update(player.hand | player.possibles)
 
         for category in CATEGORIES:
-            # If all but one card from a category is in players' HANDS, the outcast must be a Clue
+            # If all but one card from a category is in players' HANDS, the outcast must be a Murder Clue
+            #  e.g. if we know who has Green, Plum, White, Scarlet, and Peacock, then Mustard must be the SUSPECT
             cat_cards_not_in_hands = set(category.__members__.keys()) - all_hands
             if len(cat_cards_not_in_hands) == 1:
                 self.accusation |= cat_cards_not_in_hands
             elif len(cat_cards_not_in_hands) < 1:
                 raise ValueError(
-                    f"All cards from the same category are in play, which is impossible!: {category.__name__}"
+                    f"All cards from the same category are considered in play, which is impossible!: {category.__name__}"
                 )
 
-            # If a card is not in any HANDS or POSSIBLES, it must be a Clue
-            inactive_cat_cards = set(category.__members__.keys()) - hands_and_possibles
+            # If a card is not in any HANDS or POSSIBLES, it must be a Murder Clue
+            inactive_cat_cards = set(category.__members__.keys()) - all_hands_and_possibles
             if len(inactive_cat_cards) == 1:
                 self.accusation |= inactive_cat_cards
             elif len(inactive_cat_cards) > 1:
                 raise ValueError(
-                    f"Multiple cards from the same category are out of play!: {category.__name__}:{inactive_cat_cards}"
+                    f"Multiple cards from the same category are considered out of play!: {category.__name__}:{inactive_cat_cards}"
                 )
 
         if len(self.accusation) > len(old_accusation):
-            # If we gained a new clue, make sure it's removed from player POSSIBLES
-            #    (We may have determined a clue because all other cards in that category were in player HANDS...
-            #    in which case that card might still be lingering in a player's POSSIBLE)
+            # If we gained a new murder clue, make sure it's removed from player POSSIBLES
             self.remove_set_from_possibles(
                 players=self.other_players, cards=self.accusation
             )
-            # A Clue could also not be a revealed card in a Turn
+
+            # A Clue can not be a revealed card in a Turn, so update all relevant Turns
             for turn in self.turn_sequence:
                 if not turn.totally_processed:
                     turn.possible_reveals -= self.accusation
@@ -294,9 +301,16 @@ class Engine(object):
 
         return False
 
-    def offer_turn_intel(self, ready: bool = False):
+    def offer_turn_intel(self, ready=False):
+        """
+        Log to the console the complete Turn history, including every Turn's suggestion, the cards that were
+            possibly revealed, and the card that definitely was revealed (according to our deductions)
+
+        :param bool ready: Whether to skip the Turn history and get right to the murder cards
+        :return:
+        """
         if not ready:
-            print("\n?? Past Turns:")
+            print("\n|| Past Turns:")
             for turn in self.turn_sequence:
                 if turn.is_pass or turn.suggester.is_me:
                     continue
@@ -305,15 +319,21 @@ class Engine(object):
                     turn.possible_reveals &= (turn.revealer.hand | turn.revealer.possibles)
                 print(f"   Turn {turn.number}: Suggester:{turn.suggester.number} Revealer:{turn.revealer.number} Suggestion:{color_cards(turn.suggestion)} Possible Reveals:{color_cards(turn.possible_reveals)}")
         if self.accusation:
+            # If at least one of the Murder cards has been deduced, log this
             print(f"\n** Murder Cards: {color_cards(self.accusation)}")
 
     def ready_to_accuse(self):
-        """For each of the 3 CATEGORIES (Suspect, Weapon, Room), there should be only 1 member whose value is True"""
+        """
+        Return True if self.accusation is a complete set of cards, meaning
+            it contains one card per category (Suspect, Weapon, Room)
+        """
+
+        # TODO validate that self.accusation has one card per category, in addition to checking overall set length
         return len(self.accusation) == 3
 
     def process_turns_for_info(self):
         """
-        Perform deductions of who-has-what based on the information available from the self.turn_sequence.
+        Perform deductions of who-has-what based on the information available from the game's Turn sequence.
         If a pass through the turn sequence yielded new info (narrowing down other players' hands),
             loop through the turn sequence again.
         """
@@ -322,12 +342,23 @@ class Engine(object):
             got_info = False
             # Traverse turns reverse-sequentially
             for turn in self.turn_sequence[::-1]:
+                # Don't need to process Turns that are 'solved'
                 if not turn.totally_processed:
                     got_info |= self.process_turn(turn)
-            got_info |= self.determine_clues()
+
+            # After running through all past Turns, see if we've determined part of the solution
+            got_info |= self.deduce_murder_cards()
+            # Further deductive reasoning based on what is known about Player hands
             got_info |= self.check_players_hand_size()
 
     def process_turn(self, turn: Turn):
+        """
+        If we determined the card revealed during a Turn,
+            remove that card from all Players' POSSIBLES
+
+        :param Turn turn:
+        :return bool:       Whether information was gained during this method call
+        """
         if self.process_revealed_turn(turn):
             # We added to our knowledge of a player's HAND
             self.remove_set_from_possibles(
@@ -339,14 +370,15 @@ class Engine(object):
     @staticmethod
     def process_revealed_turn(turn: Turn):
         """
-        Potentially shrink possible reveals for this turn's suggestion:
+        Narrow down the possibilities for the card revealed to the Suggester during this Turn.
           We know that the revealed card CAN'T be in any other player's HAND,
           And MUST be in the revealer's POSSIBLES.
-        :return: bool
+
+        :return bool: Whether this deductive step revealed new information about players' hands or Turns
         """
         if turn.possible_reveals & turn.revealer.hand:  # Intersection
-            # At least one of the cards in the suggestion are already known in the responder's hand.
-            #   We can't get any more information from this turn
+            # At least one of the cards in the suggestion are already known to be in the revealer's hand.
+            #   We can't get any more information from this Turn
             turn.totally_processed = True
             return False
 
@@ -370,21 +402,24 @@ class Engine(object):
 
     def check_players_hand_size(self):
         """
-        1) If a Player's HAND and POSSIBLES combined is equal to size_hand, make them all part of their HAND
-        2) If a Player has HAND size equal to size_hand, wipe out their POSSIBLES
-        :return: bool Whether a player's entire hand was determined
+        If a Player's HAND and POSSIBLES combined is equal to hand_size, make them all part of their HAND
+        If a Player has HAND size equal to .hand_size, wipe out their POSSIBLES
+            since we know all their cards
+
+        :return bool: Whether a player's entire hand was determined
         """
         got_info = False
+        # Only want to consider OTHER players with unsolved HANDS
         for player in self.other_players:
             if len(player.possibles) == 0:
                 continue
-            # Only want to consider OTHER players with unsolved HANDS
-            if len(player.hand) == player.size_hand:
+            if len(player.hand) == player.hand_size:
                 # Reduce player.possibles is a gain in information
                 player.possibles = set()
                 got_info = True
-            elif len(player.hand) + len(player.possibles) == player.size_hand:
+            elif len(player.hand) + len(player.possibles) == player.hand_size:
                 player.hand.update(player.possibles)
+                # No other Player can possibly be holding Player.hand
                 self.remove_set_from_possibles(self.other_players, player.hand)
                 got_info = True
         return got_info
@@ -392,7 +427,8 @@ class Engine(object):
     @staticmethod
     def remove_set_from_possibles(players: list[Player], cards: set[str]):
         """
-        Remove a set of cards from the POSSIBLES of the given Player instances
+        Remove a set of cards from the POSSIBLES of the given Players.
+
         :param players:
         :param cards:
         """
@@ -400,13 +436,20 @@ class Engine(object):
             player.possibles -= cards  # Removal from set
 
     def print_turn_player_details(self, turn_number):
+        """
+        Log to the console the known HAND and the POSSIBLE cards held by each Player
+
+        :param turn_number:
+        :return:
+        """
         print(f"Turn #{turn_number}")
         for player in self.all_players:
             if player.is_me:
                 print_color(COLORS.MAGENTA, f"++ Player {player.number} '(YOU!)'")
             else:
+                # For non-user Players, indicate the size of the Player's HAND, even if not all cards in the HAND are known
                 print(
-                    f"++ {COLORS.WHITE}Player {player.number}{COLORS.RESET} [{len(player.hand)}/{player.size_hand}]"
+                    f"++ {COLORS.WHITE}Player {player.number}{COLORS.RESET} [{len(player.hand)}/{player.hand_size}]"
                 )
             print(f"      Hand:      {color_cards(player.hand)}")
             if len(player.possibles):
@@ -415,17 +458,18 @@ class Engine(object):
     @staticmethod
     def print_cards(prefix: str, cards: dict):
         """
-        Prints the cards from a ClueCardSet, separated by category
-        :param prefix:
-        :param cards:
+        Print a collection of cards, grouped by category (SUSPECT, WEAPON, ROOM)
+
+        :param str prefix:
+        :param dict cards: the dict representation of a ClueCardSet
         """
         s = prefix
-        space = f"\n{' ' * len(prefix)}"
+        indent = f"\n{' ' * len(prefix)}"
         ctr = 0
         for cat in CATEGORIES:
             cat_cards = cards.get(cat.__name__, set())
             if cat_cards:
-                s += f"{space if ctr else ''}{cat.__name__}: {color_cards(cat_cards)}"
+                s += f"{indent if ctr else ''}{cat.__name__}: {color_cards(cat_cards)}"
                 ctr += 1
         print(s)
 
@@ -434,11 +478,19 @@ def print_separator_line():
     print(f"\n----------------------------------------------------------")
 
 
-def print_color(color, msg):
-    print(color + msg + COLORS.RESET)
+def print_color(color, msg_str):
+    """Colorize the entire msg_str"""
+    print(color + msg_str + COLORS.RESET)
 
 
 def _colorize(card):
+    """
+    Find the appropriate ANSI color code for the card based on category,
+        and wrap card in color code characters
+
+    :param str card:
+    :return str:
+    """
     color_code = COLORMAP[CARD_TO_CATEGORY[card.lower()]]
     return color_code + card + COLORS.RESET
 
@@ -447,8 +499,8 @@ def color_cards(cards):
     """
     Wrap input item(s) in ANSI color codes for colorful output to the console
         The color applied to each item depends on what Clue Category it belongs to (Suspect, Room, Weapon)
-    :param str|iter cards: String or Iterable of Strings
-    :return: a string wrapping the input item(s) in ANSI color codes (with RESET terminator included)
+    :param str|iter cards:      String or Iterable of Strings
+    :return:                    Input wrapped in ANSI color codes (with RESET terminator included)
     """
     if isinstance(cards, str):
         return _colorize(cards)

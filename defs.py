@@ -104,7 +104,7 @@ class Player(object):
         self.is_me = is_me
         if cards is None:
             cards = []
-        self.size_hand = size_hand
+        self.hand_size = size_hand
         self.number = number
 
         if self.number == 0:
