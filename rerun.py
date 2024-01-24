@@ -1,6 +1,6 @@
 import dill
 from defs import Turn
-from clue import Engine, PICKLE_GAME
+from clue_solver import Engine, PICKLE_GAME
 
 
 def get_turn_players(eng: Engine, turn: Turn):

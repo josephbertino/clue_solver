@@ -1,3 +1,7 @@
+"""
+The main module that houses the Clue Solver 'Engine', which holds all deductive and Turn processing logic.
+"""
+import os
 import atexit
 import dill
 import time
@@ -6,16 +10,28 @@ from defs import (ClueCardSet, Turn, Player, CATEGORIES, NUM_CARDS, ALL_CARDS, N
                   COLORS, COLORMAP, CARD_TO_CATEGORY, SORT_ORDER)
 
 class Engine(object):
-
+    """
+    The Engine is the Central Nervous System of this Clue Solver tool.
+    It keeps track of all Turns in the game with self.turn_sequence
+    It processes Turn information and performs deductive logic after each Turn to
+        determine for YOU, the Player & user of this tool, what cards the other Players have
+    """
+    # accusation is the set of cards KNOWN to solve the murder and wins the game
     accusation = ClueCardSet()
 
     def __init__(self, num_players, my_player_number, my_hand):
+        """
+
+        :param num_players:
+        :param my_player_number:
+        :param my_hand:
+        """
         # Initialize turn list with blank turn
         self.turn_sequence: list[Turn] = [Turn(number=0, is_pass=True)]
         self.my_hand: list[str] = my_hand
         self.accusation_dict = {}
 
-        # Initialize player list with blank player
+        # Initialize player list with No-Op player
         self._player_list: list[Player] = [NOBODY]
         self.all_players: list[Player] = []  # All active players in game
         self.other_players: list[Player] = []  # All players besides me
@@ -25,101 +41,154 @@ class Engine(object):
 
         self.setup_players()
 
-    def get_player(self, player_num):
-        return self._player_list[player_num]
-
     def setup_players(self):
-        """Generate Player instances for game, including self.my_player (You, the user)"""
+        """
+        Generate Player instances for the game, including self.my_player (YOU, the user)
+
+        Determine how many cards each Player ought to have been dealt,
+            since not all Players may get the same number of cards
+        """
         num_active_cards = NUM_CARDS - 3
         # Not all players may get the same number of cards
-        cards_per_player = num_active_cards // self.num_players
-        leftovers = num_active_cards % self.num_players
+        min_cards_per_player = num_active_cards // self.num_players
+        # leftover_cards are distributed to the first Players in game rotation
+        leftover_cards = num_active_cards % self.num_players
         for i in range(1, self.num_players + 1):
-            is_me = i == self.my_player_number
-            size_hand = cards_per_player + (1 if i <= leftovers else 0)
+            is_me = (i == self.my_player_number)
+            size_hand = min_cards_per_player + (1 if i <= leftover_cards else 0)
             new_player = Player(number=i, size_hand=size_hand, is_me=is_me, cards=self.my_hand)
             if is_me:
                 self.my_player = new_player
             self._player_list.append(new_player)
 
+        # Ignore the No-Op Player 0 for self.all_players
         self.all_players = self._player_list[1:]
         self.other_players = [player for player in self.all_players if not player.is_me]
 
+    def get_player(self, player_num):
+        """Return the Player object"""
+        return self._player_list[player_num]
+
     def run(self):
+        """
+        The entire game happens here. The general order of operations is:
+            1. The Engine logs what it knows so far to the user
+            2. The user informs the Engine what transpired during the Turn
+            3. The Engine processes all Turns, past and present, with its ever-growing
+                accumulation of knowledge to produce more knowledge about what everyone is holding
+            4. If it is the user's turn and the Engine has deduced the solution, it will tell the
+                user to make their Accusation
+        """
         while True:
             turn_number = len(self.turn_sequence)
             suggester_num = (turn_number % self.num_players) or self.num_players
             suggester = self.get_player(suggester_num)
 
-            """Log game details to output"""
+            # Log game details, including Players' hands, to the console
             print_separator_line()
             self.print_turn_player_details(turn_number)
 
-            self.offer_clue_intel()
+            # Log to the user past Turn info, so the user can make an informed suggestion on their turn
+            self.offer_turn_intel()
 
+            # Enter Turn information to the Engine
             if self.take_turn(turn_number, suggester):
+                """
+                The Engine does all of its logic to determine:
+                    1. Who has what
+                    2. What was revealed during each Turn
+                """
                 self.process_turns_for_info()
 
             if suggester.is_me and self.ready_to_accuse():
                 print("****** You are ready to accuse!")
-                self.offer_clue_intel(ready=True)
+                self.offer_turn_intel(ready=True)
                 break
 
     def take_turn(self, turn_number, suggester: Player):
         """
-        :return bool: True if turn was taken, False if player passed
+        Store all information about the Turn in the Engine
+
+        The input from the user to the Engine on each Turn is one of the following
+            > 'pass'
+            > 'update'
+            > (card_1,card_2,card_3,revealing_player_number)
+                e.g. > 'rope,green,hall,2'
+                Meaning, Player 2 showed a card to the Suggesting Player, who guessed it was
+                Mr. Green in the Hall with the Rope
+                If no player revealed a card to the Suggester, then 0 should be submitted
+                as the revealer_player_number
+
+        :return bool: True if turn was taken, False if suggester Player passed
         """
         if suggester == self.my_player:
-            print_color(COLORS.WHITE, f"\n-- Player {suggester.number} '(YOU!)' takes turn")
+            print_color(COLORS.MAGENTA, f"\n-- Player {suggester.number} '(YOU!)' takes turn")
         else:
             print(f"\n-- Player {suggester.number} takes turn")
 
         parameters = handle_input(
-            "-- Enter Turn Parameters (Suggestion Combo + Revealing Player Number, 'PASS', or 'UPDATE'): "
+            "-- Enter Turn Details (Suggestion Combo + Revealing Player Number, or 'PASS', or 'UPDATE'): "
         )
+
         if parameters.upper().strip() == "PASS":
+            # User indicates that the Suggester decline to make a suggestion
             self.turn_sequence.append(Turn(number=turn_number, is_pass=True))
             return False
         elif parameters.upper().strip() == 'UPDATE':
+            """
+            Here, the user indicates that they wish to manually update the Engine's accumulated knowledge,
+                before proceeding with entering the Turn details
+            """
             self.user_updates_hands(turn_number)
+            # Recursive call here because we want to get the Turn details after the user update
             return self.take_turn(turn_number, suggester)
 
-        suggestion, revealer_num = parameters.rsplit(sep=',', maxsplit=1)
+        # Parse the Turn details
+        suggestion_set, revealer_num = parameters.rsplit(sep=',', maxsplit=1)
         revealer_num = int(revealer_num)
         if revealer_num < 1:
             revealer_num = 0  # Player == NOBODY
-        suggestion = suggestion.split(',')
+        suggestion_set = suggestion_set.split(',')
         revealer = self.get_player(revealer_num)
         turn = Turn(
             number=turn_number,
-            suggestion=suggestion,
+            suggestion=suggestion_set,
             suggester=suggester,
             revealer=revealer,
         )
 
         if turn.suggester.is_me and turn.revealer is not NOBODY:
-            # If I was the suggester and a card was revealed, store turn.revealed_card
+            # If user is the suggester Player and a card was revealed, store that card in turn.revealed_card
             turn.revealed_card = handle_input(
                 f"   Player {turn.suggester.number} is You! What card did you see? "
             )
 
+        # Perform post-turn deductions that only need to happen once, immediately after a turn
         self.one_time_turn_deductions(turn)
         self.turn_sequence.append(turn)
+
         return True
 
     def one_time_turn_deductions(self, turn: Turn):
         """Perform post-turn deductions that only need to happen once, immediately after a turn"""
         if turn.is_pass:
+            # There's nothing to process about a passed Turn
             return
 
-        # Non-revealing responders from a turn don't have any of the suggested cards. Reduce their POSSIBLES
+        """
+        We know that Players who abstained from revealing a card to the suggester must not
+          have any cards in the suggestion set
+        """
         self.remove_set_from_possibles(
             players=self.get_non_revealing_responders(turn), cards=turn.suggestion
         )
 
-        # A 'totally processed' turn is one in which we know that the revealer's HAND overlaps
-        #   with the suggestion (which happens automatically when there is no revealer, or the revealer is Me),
-        #   so there's no new information to gain about the revealer's HAND from further processing
+        """
+        A 'totally processed' Turn is one in which the revealer's known HAND intersects
+          with the Turn's suggestion. This happens also when there is no revealer, or the revealer is the user.
+          There's no new information to gain about the revealer's HAND from this Turn, 
+          once the turn is totally processed
+        """
         if turn.revealer is NOBODY:
             turn.totally_processed = True
             turn.possible_reveals = set()
@@ -127,38 +196,48 @@ class Engine(object):
             turn.totally_processed = True
             turn.possible_reveals &= self.my_player.hand
         elif turn.suggester.is_me:
-            # Revealed card will be removed from player POSSIBLES during process_turn() step
+            # Revealed card will be removed from other Players' POSSIBLES during process_turn()
             turn.possible_reveals = {turn.revealed_card}
 
     def user_updates_hands(self, turn_number):
         """
         User identifies whether they **think** a player HAS or LACKS a certain card
-            This updates that player's HAND or POSSIBLES, and proceeds with the turn's logical deductions
-            It is entirely possible for an update provided by the user to be incorrect, which
+            This updates that Player's HAND and POSSIBLES, and proceeds with the Engine's logical deductions.
+
+        It is entirely possible for an update provided by the user to be incorrect, which
             will effectively render this Engine unreliable for the remainder of the game. Use with caution.
         """
-        prompt = "-- What's the information update you'd like to apply? Enter in the form '<player_num>,[has|lacks],<card>': "
+        prompt = "-- What's the information update you'd like to apply? Enter in the format '<player_num>,[has|lacks],<card>': "
         parameters = handle_input(prompt)
+
+        # Parse the input
         player_num, action, card = parameters.split(',')
         player = self.get_player(int(player_num))
+
         if action == 'has':
-            msg = f" > > Adding '{color_cards(card)}' to Player {player_num}' HAND "
+            # Move a card from the Player's POSSIBLES to its HAND
+            msg = f" > > Adding '{color_cards(card)}' to Player {player_num}'s HAND "
             player.hand |= {card}
+            # Remove the card from all other Players' POSSIBLES
             self.remove_set_from_possibles(self.all_players, {card})
+
         else:  # action == 'lacks'
-            msg = f"Removing '{color_cards(card)}' from Player {player_num}' POSSIBLES "
+            # Remove the card from the Player's POSSIBLES
+            msg = f"Removing '{color_cards(card)}' from Player {player_num}'s POSSIBLES "
             player.possibles -= {card}
+
         msg += 'and re-running deductions'
         print(msg)
         print_separator_line()
+
         self.process_turns_for_info()
         self.print_turn_player_details(turn_number)
-        self.offer_clue_intel()
+        self.offer_turn_intel()
 
     def get_non_revealing_responders(self, turn: Turn):
         """
-        Return the sequence of players ("responders") in a turn that "passed" on a suggestion (did not have a clue card),
-            up until but NOT including the clue revealer
+        Return the sequence of players ("responders") in a turn that "passed" on a suggestion
+            (did not reveal a clue card), up until but NOT including the revealer
         :param Turn turn:
         :return list[Player]:
         """
@@ -215,7 +294,7 @@ class Engine(object):
 
         return False
 
-    def offer_clue_intel(self, ready: bool = False):
+    def offer_turn_intel(self, ready: bool = False):
         if not ready:
             print("\n?? Past Turns:")
             for turn in self.turn_sequence:
@@ -324,10 +403,10 @@ class Engine(object):
         print(f"Turn #{turn_number}")
         for player in self.all_players:
             if player.is_me:
-                print_color(COLORS.WHITE, f"++ Player {player.number} '(YOU!)'")
+                print_color(COLORS.MAGENTA, f"++ Player {player.number} '(YOU!)'")
             else:
                 print(
-                    f"++ {COLORS.MAGENTA}Player {player.number}{COLORS.RESET} [{len(player.hand)}/{player.size_hand}]"
+                    f"++ {COLORS.WHITE}Player {player.number}{COLORS.RESET} [{len(player.hand)}/{player.size_hand}]"
                 )
             print(f"      Hand:      {color_cards(player.hand)}")
             if len(player.possibles):
@@ -387,11 +466,14 @@ ALLOWABLE_INPUTS = ['pass', 'update', 'has', 'lacks']
 
 def handle_input(prompt: str = 'Default Prompt:', splitter: str = ','):
     """
-    Input received from user will be a comma-delimited string.
-    For all non-numeric entries, check against list of playing cards (e.g. 'White') and other allowed phrases (e.g. 'PASS')
+    Received input from user and validated.
+    Input should be a comma-delimited, alphanumeric string.
+    For all non-numeric entries, check against list of valid game cards (e.g. 'white')
+        and other allowed phrases (ALLOWABLE_INPUTS) (e.g. 'PASS')
+
     :param prompt:      The prompt to display to the user
-    :param splitter:    The char to split input on
-    :return: the original input from user, lower(), once that input has been validated
+    :param splitter:    The character to split input on
+    :return:            The validated input from user, lower-cased
     """
     while True:
         valid_input = True
@@ -412,23 +494,33 @@ def handle_input(prompt: str = 'Default Prompt:', splitter: str = ','):
 
 def main():
     """
-    Launch the Engine, which operates from the user's POV in playing the game.
-    :return:
+    Launch the Engine, which operates from the user's POV playing the game
+    This function also configures the interpreter to dump the game's state upon closure,
+        so that if a particular game state caused the Engine to crash, you can return to that
+        game after examining and resolving the bug.
     """
-    print()
-    print("Welcome to the Clue Deduction Engine!\n")
+    os.system('cls' if os.name == 'nt' else 'clear')
+    print_color(COLORS.CYAN, "\n\t\tWelcome to Clue Solver!")
+    print_color(COLORS.WHITE, "\tA Deduction Engine for the Board Game 'Clue'\n")
 
     print(
-        "**IMPORTANT**: Deal cards to players according to gameplay rotation. E.g. Player 1 gets the first card dealt, then Player 2...\n"
+        f"**{COLORS.RED}IMPORTANT{COLORS.RESET}**: Deal game cards to players according to gameplay rotation.\n"
+        f"  e.g. Player 1 gets the first card dealt, then Player 2...\n"
+        f"  This ensures that any extra cards are dealt to the first Players\n"
     )
 
-    time.sleep(1)
+    time.sleep(0.5)
 
     num_players = int(handle_input("Enter Number of Players: "))
     my_player_number = int(handle_input("Enter Your Player Number (gameplay rotation position): "))
-    my_hand = handle_input("Enter Your Hand, comma separated (e.g. 'xxx,yyy,zzz,...'): ").split(',')
+    my_hand = handle_input("Enter Your Hand, comma separated (e.g. 'knife,hall,pipe,...'): ").split(',')
     eng = Engine(num_players=num_players, my_player_number=my_player_number, my_hand=my_hand)
 
+    """
+    After a game terminates, either through natural completion or from a crash,
+    pickle and dump the game state locally for debugging purposes.
+    Use the module rerun.py to "pick up where you left off" once you (think you) have fixed the bug!
+    """
     def dump_engine_state(*args):
         print(f"Dumping Pickled Engine State to {PICKLE_STATE}")
         with open(PICKLE_STATE, "wb") as f:
@@ -448,6 +540,7 @@ def main():
     atexit.register(dump_engine_state)
     atexit.register(dump_gameplay)
 
+    # Start the game!
     eng.run()
 
 
