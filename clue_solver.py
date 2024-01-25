@@ -86,7 +86,7 @@ class Engine(object):
 
             # Log game details, including Players' hands, to the console
             print_separator_line()
-            self.print_turn_player_details(turn_number)
+            self.print_player_hands(turn_number)
 
             # Log to the user past Turn info, so the user can make an informed suggestion on their turn
             self.offer_turn_intel()
@@ -125,7 +125,7 @@ class Engine(object):
         print(f"Player {suggester.number} takes turn")
 
         parameters = handle_input(
-            "-- Enter Turn Details (Suggestion Combo + Revealing Player Number, or 'PASS', or 'UPDATE'): "
+            "-- Enter Turn Details\n   (Suggestion + Revealing Player Number, or 'PASS', or 'UPDATE'): "
         )
 
         if parameters.upper().strip() == "PASS":
@@ -229,7 +229,7 @@ class Engine(object):
         print_separator_line()
 
         self.process_turns_for_info()
-        self.print_turn_player_details(turn_number)
+        self.print_player_hands(turn_number)
         self.offer_turn_intel()
 
     def get_non_revealing_responders(self, turn: Turn):
@@ -433,7 +433,7 @@ class Engine(object):
         for player in players:
             player.possibles -= cards  # Removal from set
 
-    def print_turn_player_details(self, turn_number):
+    def print_player_hands(self, turn_number):
         """
         Log to the console the known HAND and the POSSIBLE cards held by each Player
 
@@ -444,7 +444,7 @@ class Engine(object):
         for player in self.all_players:
             if player.is_me:
                 print_color(COLORS.CYAN, f"++ Player {player.number} (YOU!)")
-                print_color(COLORS.CYAN, f"      Hand:      {color_cards(player.hand)}")
+                print(f"      {COLORS.CYAN}Hand:{COLORS.RESET}      {color_cards(player.hand)}")
             else:
                 # For non-user Players, indicate the size of the Player's HAND, even if not all cards in the HAND are known
                 print(
@@ -563,8 +563,8 @@ def main():
     time.sleep(0.5)
 
     num_players = int(handle_input("Enter Number of Players: "))
-    my_player_number = int(handle_input("Enter Your Player Number (gameplay rotation position): "))
-    my_hand = handle_input("Enter Your Hand, comma separated (e.g. 'knife,hall,pipe,...'): ").split(',')
+    my_player_number = int(handle_input("\nEnter Your Player Number (Gameplay rotation position): "))
+    my_hand = handle_input(f"\nEnter Your Hand, comma-separated (e.g. '{COLORS.GREEN}knife,hall,pipe,...{COLORS.RESET}'): ").split(',')
     eng = Engine(num_players=num_players, my_player_number=my_player_number, my_hand=my_hand)
 
     """
