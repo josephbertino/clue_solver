@@ -122,7 +122,7 @@ class Engine(object):
         :return bool: True if turn was taken, False if suggester Player passed
         """
         if suggester == self.my_player:
-            print_color(COLORS.MAGENTA, f"\n-- Player {suggester.number} '(YOU!)' takes turn")
+            print_color(COLORS.CYAN, f"\n-- Player {suggester.number} (YOU!) takes turn")
         else:
             print(f"\n-- Player {suggester.number} takes turn")
 
@@ -445,7 +445,7 @@ class Engine(object):
         print(f"Turn #{turn_number}")
         for player in self.all_players:
             if player.is_me:
-                print_color(COLORS.MAGENTA, f"++ Player {player.number} '(YOU!)'")
+                print_color(COLORS.CYAN, f"++ Player {player.number} (YOU!)")
             else:
                 # For non-user Players, indicate the size of the Player's HAND, even if not all cards in the HAND are known
                 print(
