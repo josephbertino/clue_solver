@@ -121,10 +121,8 @@ class Engine(object):
 
         :return bool: True if turn was taken, False if suggester Player passed
         """
-        if suggester == self.my_player:
-            print_color(COLORS.CYAN, f"\n-- Player {suggester.number} (YOU!) takes turn")
-        else:
-            print(f"\n-- Player {suggester.number} takes turn")
+        print_color(COLORS.YELLOW, f"\nTurn # {turn_number}")
+        print(f"Player {suggester.number} takes turn")
 
         parameters = handle_input(
             "-- Enter Turn Details (Suggestion Combo + Revealing Player Number, or 'PASS', or 'UPDATE'): "
@@ -310,7 +308,7 @@ class Engine(object):
         :return:
         """
         if not ready:
-            print("\n|| Past Turns:")
+            print_color(COLORS.GREEN, "\nPast Turns:")
             for turn in self.turn_sequence:
                 if turn.is_pass or turn.suggester.is_me:
                     continue
@@ -442,16 +440,17 @@ class Engine(object):
         :param turn_number:
         :return:
         """
-        print(f"Turn #{turn_number}")
+        print(f"\t\t\t{COLORS.WHITE}CARD DISTRIBUTION{COLORS.RESET}")
         for player in self.all_players:
             if player.is_me:
                 print_color(COLORS.CYAN, f"++ Player {player.number} (YOU!)")
+                print_color(COLORS.CYAN, f"      Hand:      {color_cards(player.hand)}")
             else:
                 # For non-user Players, indicate the size of the Player's HAND, even if not all cards in the HAND are known
                 print(
                     f"++ {COLORS.WHITE}Player {player.number}{COLORS.RESET} [{len(player.hand)}/{player.hand_size}]"
                 )
-            print(f"      Hand:      {color_cards(player.hand)}")
+                print(f"      Hand:      {color_cards(player.hand)}")
             if len(player.possibles):
                 self.print_cards("      Possibles: ", player.possibles_dict)
 
@@ -593,6 +592,7 @@ def main():
     atexit.register(dump_gameplay)
 
     # Start the game!
+    os.system('cls' if os.name == 'nt' else 'clear')
     eng.run()
 
 
