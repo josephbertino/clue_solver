@@ -28,7 +28,7 @@ Think of this utility as applying the principles of card counting to playing a k
 ## Setting Up The Game
 
 <figure>
-    <img src="sources/setup_screen.png" width="900" height="400">
+    <img src="sources/setup_screen.png" width="900" height="350">
     <figcaption>Welcome / Setup screen when you startup the Clue Solver tool</figcaption>
 </figure>
 
@@ -45,7 +45,7 @@ When starting the tool, it will ask you to enter the following details:
   * When there are 'leftover' cards, they should be distributed to the first players in the rotation (starting with Player 1)
 
 <figure>
-    <img src="sources/setup_detail.png" width="900" height="150">
+    <img src="sources/setup_detail.png" width="900" height="100">
     <figcaption>Entering the cards in your HAND before the game starts</figcaption>
 </figure>
 
@@ -65,13 +65,14 @@ On each turn, the user will view and interact with the Game Screen.
 The Game Screen is divided into three sections.
 
 <figure>
-    <img src="sources/turn_screen.png" width="900" height=500">
+    <img src="sources/turn_1.png" width="900" height=500">
     <figcaption>Typical turn screen, showing Player cards, past Turns, and current Turn</figcaption>
 </figure>
 
 ### Card Distribution
 This region displays the KNOWN and POSSIBLE cards for each Player, including the user.
-+ For visual organization, cards are grouped and colored according to their Category (Suspect, Weapon, Room)
++ For visual organization, cards are grouped and colored according to their Category (Suspect, Weapon, Room).
++ Next to the Player name is a ratio [X/Y] indicating the number of known cards in their HAND relative to the size of their HAND.
 + As successive Turns yield more information about who does or doesn't hold certain cards, this area will update.
 
 ### Turn History
@@ -85,19 +86,13 @@ This area offers a prompt to the user to enter the details of the current Turn
 + For details on how to interact with this prompt, see section [Entering A Turn](#entering-a-turn)
 
 ---
-## Gamestate Updates Over Time
-
-As Turns progress and the Solver Engine runs its deductions, the Game Screen will figure out what cards are in the Players' hands.
-
----
-
 ## Entering a Turn
 
 Players tell the Engine what happens next at the **Current Turn Prompt** section of the Game Screen.
 
-Players have 3 options of inputs
+Players have 3 options for input:
 
-### Inputing a Suggestion & Reveal
+### Suggestion & Reveal
 Specify when a Player (including yourself, the user) makes a suggestion about the murder and is shown a Clue card by another player
 + The Engine already knows which Player is the Suggester
 + Your entry must include the 3 cards that composed the Suggestion (Suspect, Weapon, Room), as well as the numeric ID of the Player that revealed a card to the Suggester
@@ -105,24 +100,58 @@ Specify when a Player (including yourself, the user) makes a suggestion about th
   + If No Player revealed a card on this Turn (meaning, no one had any of those cards), enter `0` as the Player ID
   + The order of cards does not matter, but they must come before the Player ID. Comma-delimited, no spaces.
 + If You, the user, were the Suggester, the Engine will ask you what card was revealed to you. Respond by entering the value of the card when prompted.
-  (screenshot of when user is prompted)
+<figure>
+    <img src="sources/turn_1_input.png" width="900" height=100">
+    <figcaption>How to Enter when you the user are shown a card</figcaption>
+</figure>
 
 ### Player Passes
 If a Player does not enter a room or make a suggestion during their Turn, this is considered a "Pass". 
 + Enter `pass` in the prompt, and play will proceed to the next Player
 
-### Manually Updating Mid-Turn
+### Manually Updating Player Hands Mid-Turn
+By analysing the Card Distribution (or through some more crooked means...) you might become privy to knowledge about whether another Player HAS or LACKS a particular card. Before entering Turn details, you may manually update the Engine's knowledge with the `update` command
+
+<figure>
+    <img src="sources/turn_8_update_has.png" width="900" height=400">
+    <figcaption>After entering 'update', you may specify whether a particular Player HAS or LACKS a card. The Card Distribution area will update, and you may then proceed with entering Turn details.</figcaption>
+</figure>
+
+**Update Process**
++ First, enter `update` at the prompt.
++ Then enter input of the format `<player_num>,[has|lacks],<card>` (comma-separated, no spaces)
+    + e.g. `2,lacks,rope` <-- Player 2 does not have the 'rope' card, so it will be removed from their POSSIBLES
+    + e.g. `3,has,green` <-- Player 3 has the 'green' card, so it will be added to their HAND and removed from everyone's POSSIBLES
+
+Note that you can perform multiple updates on a Turn! You simply have to trigger each update separately with the `update` command.
+
+<figure>
+    <img src="sources/turn_9_update_lacks.png" width="1000" height=150">
+    <figcaption>After each update, the Engine will re-run all its deductive logic, potentially solving more of the game for you</figcaption>
+</figure>
 
 
-  + Enter: 'update'
-  + Then enter a line of the format (comma-separated, no spaces)
-    + `<player_num>,[has|lacks],<card>`
-    + e.g. '2,lacks,rope'
+---
+## Gamestate Updates Over Time
 
+As Turns progress and the Solver Engine runs its deductions, the Game Screen will figure out what cards are in the Players' hands.
+All you have to do is be diligent about entering the Turn details.
+
+<figure>
+    <img src="sources/turn_5_show_cards.png" width="900" height=500">
+    <figcaption>Players Cards after Turn 4</figcaption>
+</figure>
+
+<figure>
+    <img src="sources/turn_8_turn_history.png" width="900" height=500">
+    <figcaption>Players Cards after Turn 7. Note Players 2 and 3 have cards added to their HANDS, and Players' POSSIBLES have been reduced due to process of elimination</figcaption>
+</figure>
+
+---
 ## Configuration
 
 **The Cards, according to Clue Solver**
-* This tool assumes the following naming of Suspects, Weapons, and Rooms, by default:
+This tool assumes the following naming of Suspects, Weapons, and Rooms, by default:
 ```python
 SUSPECT = ['white', 'plum', 'peacock', 'scarlet', 'mustard', 'green']
 WEAPON = ['rope', 'pipe', 'wrench', 'candlestick', 'knife', 'revolver']
