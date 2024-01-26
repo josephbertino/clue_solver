@@ -18,7 +18,7 @@ Think of this utility as applying the principles of card counting to playing a k
 1. Download this project `clue_solver` to your desktop
 2. In a terminal or console, navigate to this project's root folder and run the file `clue_solver.py`
 ```term
->>> python clue_solver.py
+>>> python3 clue_solver.py
 ```
 3. Follow the prompts in the terminal to set up the game and begin playing!
     + See the section below [Setting up the Game](#setting-up-the-game) for more details
