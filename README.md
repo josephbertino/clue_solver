@@ -1,11 +1,11 @@
 # Clue Board Game "Solver"
 
 ## What Does It Do?
-This is a utility written in Python to help you win at the board game Clue (aka Cluede outside the US).
+This is a utility written in Python to help you win at the board game Clue (aka Cluedo outside the US).
 
-As you play Clue, whether virtually or in-person, you use the tool to manually enter the details about each successive Turn taken during the game. Such Turn details includes the Player who is making a suggestion about the murder, the Player who reveals a card to refute that suggestion (if any), as well as when a Player does not make a suggestion on a given Turn. 
+As you play Clue, whether virtually or in-person, use the tool to manually enter the details about each successive Turn taken during the game. Turn details includes the Player who is making a suggestion about the murder, the Player who reveals a card to refute that suggestion (if any), as well as when a Player does not make a suggestion on a given Turn. 
 
-This tool keeps track of the cards in your hand, Turn order, and what it knows about the other Players' hands. As more details become available with successive Turns, the tool uses deep process of elimination to deduce what other Players are holding. With enough Turns, it will be able to deduce the winning Accusation for you... ideally before someone else has!
+This tool keeps track of the cards in your hand, Turn order, and what it knows about the other Players' hands. As more details become available with successive Turns, the tool uses a deep process of elimination to deduce what other Players are holding. With enough Turns, it will be able to deduce the winning Accusation for you... ideally before someone else has!
 
 Think of this utility as applying the principles of card counting to playing a kid's board/card game. Enjoy!
 
@@ -16,9 +16,9 @@ Think of this utility as applying the principles of card counting to playing a k
 ## How do I start using it?
 
 1. Download this project `clue_solver` to your desktop
-2. In a terminal or console, navigate to this project's root folder and run the file `clue.py`
+2. In a terminal or console, navigate to this project's root folder and run the file `clue_solver.py`
 ```term
->>> python clue.py
+>>> python clue_solver.py
 ```
 3. Follow the prompts in the terminal to set up the game and begin playing!
     + See the section below [Setting up the Game](#setting-up-the-game) for more details
@@ -38,24 +38,25 @@ When starting the tool, it will ask you to enter the following details:
     2. Your "Player Number", where you are in the rotation (1, 2, 3,...)
     3. The cards in your hand
 
-**When Dealing Cards to Players**
-+ **Please Note** that the tool determines the size of each Player's hand based on the total number of players and the size of the deck (21 cards in the standard game, however you may change this to suit your board! See [Configuration](#configuration) below). 
-+ Depending on the number of Players, not all Players will have the same number of cards in their hand. E.g. when there are 4 Players, and playing with the standard 21-card deck, two Players will have 5 cards in their hand and the others will have 4 cards.
-+ Deal cards one at a time in Round Robin order: Player 1 gets one card, then Player 2, then Player 3, etc.
-  * When there are 'leftover' cards, they should be distributed to the first players in the rotation (starting with Player 1)
-
 <figure>
     <img src="sources/setup_detail.png" width="900" height="100">
     <figcaption>Entering the cards in your HAND before the game starts</figcaption>
 </figure>
 
 **Entering Your Hand at the Game's Start**
-  + Enter the contents of your hand as a comma-delimited, list of values, with no whitespace. e.g.
+  + Enter the contents of your hand as a comma-delimited list of values, with no whitespace. e.g.
     `>>> Enter Your Hand, comma separated (e.g. 'knife,hall,pipe,...'): study,green,white,rope,kitchen`
   + The card values must match elements of the lists `SUSPECT`, `WEAPON`, and `ROOM` defined in `./defs.py`
     + e.g. the Lead Pipe should simply be entered as `pipe`
     + e.g. Colonel Mustard should be entered as `mustard`
   + No whitespace, only alpha-strings separated by commas, and order of cards **does not matter**
+
+
+**Caution: When Dealing Cards to Players**
++ **Please Note** that the tool determines the size of each Player's hand based on the total number of players and the size of the deck (21 cards in the standard game, however you may change this to suit your board! See [Configuration](#configuration) below). 
++ Depending on the number of Players, not all Players will have the same number of cards in their hand. E.g. when there are 4 Players, and playing with the standard 21-card deck, two Players will have 5 cards in their hand and the others will have 4 cards.
++ Deal cards one at a time in Round Robin order: Player 1 gets one card, then Player 2, then Player 3, etc.
+  * When there are 'leftover' cards, they should be distributed to the first players in the rotation (starting with Player 1)
 
 ---
 
@@ -66,23 +67,23 @@ The Game Screen is divided into three sections.
 
 <figure>
     <img src="sources/turn_1.png" width="900" height=500">
-    <figcaption>Typical turn screen, showing Player cards, past Turns, and current Turn</figcaption>
+    <figcaption>Typical turn screen, showing Card Distribution, Past Turns, and Current Turn</figcaption>
 </figure>
 
 ### Card Distribution
-This region displays the KNOWN and POSSIBLE cards for each Player, including the user.
+This section displays the KNOWN and POSSIBLE cards for each Player, including the user.
 + For visual organization, cards are grouped and colored according to their Category (Suspect, Weapon, Room).
-+ Next to the Player name is a ratio [X/Y] indicating the number of known cards in their HAND relative to the size of their HAND.
-+ As successive Turns yield more information about who does or doesn't hold certain cards, this area will update.
++ Next to a Player name is a ratio [X/Y] indicating the number of known cards in their HAND relative to the size of their HAND.
++ As successive Turns yield more information about who does or doesn't hold certain cards, this section will update.
 
 ### Turn History
-This area displays information about all past turns.
+This section displays information about all past turns.
 + Details include the Player who made the murder suggestion (the 'Suggester'), the Player who revealed a Clue card to the Suggester (the 'Revealer'), and the set of cards that could have possibly been the Revealed card.
-+ As the Engine works its deductive magic throughout the course of the game, the set of `possible reveals` for Turns will get narrowed down and eventually make determinations about what cards were shown on each Turn. This information will be used to narrow down Players' hands in the **Card Distribution** area.
-+ Note that Turns in which the user was the Suggester are not included in this Turn History, as it can not offer any new insights into other Player's hands.
++ As the Engine works its deductive magic throughout the game, the set of `possible reveals` for Turns will get narrowed down.
++ Note that Turns in which You, the user, was the Suggester are not included in this Turn History, as it can not offer any insights into other Player's HANDS.
 
 ### Current Turn Prompt
-This area offers a prompt to the user to enter the details of the current Turn
+This section offers a prompt to the user to enter the details of the current Turn.
 + For details on how to interact with this prompt, see section [Entering A Turn](#entering-a-turn)
 
 ---
@@ -95,21 +96,21 @@ Players have 3 options for input:
 ### Suggestion & Reveal
 Specify when a Player (including yourself, the user) makes a suggestion about the murder and is shown a Clue card by another player
 + The Engine already knows which Player is the Suggester
-+ Your entry must include the 3 cards that composed the Suggestion (Suspect, Weapon, Room), as well as the numeric ID of the Player that revealed a card to the Suggester
++ Your entry must include the 3 cards that composed the Suggestion (Suspect, Weapon, Room), as well as the numeric ID of the Player that revealed a card to the Suggester.
   + e.g. `green,rope,kitchen,3` <--- This means that Player 3 showed a card to whomever suggested that it was Mr. Green in the Kitchen with the Rope
   + If No Player revealed a card on this Turn (meaning, no one had any of those cards), enter `0` as the Player ID
   + The order of cards does not matter, but they must come before the Player ID. Comma-delimited, no spaces.
 + If You, the user, were the Suggester, the Engine will ask you what card was revealed to you. Respond by entering the value of the card when prompted.
 <figure>
     <img src="sources/turn_1_input.png" width="900" height=100">
-    <figcaption>How to Enter when you the user are shown a card</figcaption>
+    <figcaption>How to Enter Turn when You are the Suggester and are shown a card</figcaption>
 </figure>
 
 ### Player Passes
 If a Player does not enter a room or make a suggestion during their Turn, this is considered a "Pass". 
-+ Enter `pass` in the prompt, and play will proceed to the next Player
++ Enter `pass` in the prompt, and the Engine will proceed to the next Player.
 
-### Manually Updating Player Hands Mid-Turn
+### Manually Updating a Player's Hand Mid-Turn
 By analysing the Card Distribution (or through some more crooked means...) you might become privy to knowledge about whether another Player HAS or LACKS a particular card. Before entering Turn details, you may manually update the Engine's knowledge with the `update` command
 
 <figure>
@@ -121,12 +122,11 @@ By analysing the Card Distribution (or through some more crooked means...) you m
 + First, enter `update` at the prompt.
 + Then enter input of the format `<player_num>,[has|lacks],<card>` (comma-separated, no spaces)
     + e.g. `2,lacks,rope` <-- Player 2 does not have the 'rope' card, so it will be removed from their POSSIBLES
-    + e.g. `3,has,green` <-- Player 3 has the 'green' card, so it will be added to their HAND and removed from everyone's POSSIBLES
+    + e.g. `3,has,green` <-- Player 3 has the 'green' card, so it will be added to their HAND and removed from **everyone's** POSSIBLES
 
 Note that you can perform multiple updates on a Turn! You simply have to trigger each update separately with the `update` command.
-
 <figure>
-    <img src="sources/turn_9_update_lacks.png" width="1000" height=150">
+    <img src="sources/turn_9_update_lacks.png" width="1200" height=150">
     <figcaption>After each update, the Engine will re-run all its deductive logic, potentially solving more of the game for you</figcaption>
 </figure>
 
@@ -134,8 +134,7 @@ Note that you can perform multiple updates on a Turn! You simply have to trigger
 ---
 ## Gamestate Updates Over Time
 
-As Turns progress and the Solver Engine runs its deductions, the Game Screen will figure out what cards are in the Players' hands.
-All you have to do is be diligent about entering the Turn details.
+As Turns progress, the Engine will figure out what cards are in the Players' HANDS and update the Card Distribution screen. All you have to do is be diligent about entering the Turn details.
 
 <figure>
     <img src="sources/turn_5_show_cards.png" width="900" height=500">
@@ -151,6 +150,7 @@ All you have to do is be diligent about entering the Turn details.
 ## Configuration
 
 **The Cards, according to Clue Solver**
+
 This tool assumes the following naming of Suspects, Weapons, and Rooms, by default:
 ```python
 SUSPECT = ['white', 'plum', 'peacock', 'scarlet', 'mustard', 'green']
