@@ -232,10 +232,11 @@ class Engine(object):
         self.print_player_hands(turn_number)
         self.offer_turn_intel()
 
-    def get_non_revealing_responders(self, turn: Turn):
+    def get_non_revealing_responders(self, turn):
         """
-        Return the sequence of players ("responders") in a turn that "passed" on a suggestion
-            (did not reveal a clue card), up until but NOT including the revealer
+        Return the sequence of players in a turn that "passed" on a suggestion
+            (did not reveal a clue card), up until but NOT including the card revealer
+
         :param Turn turn:
         :return list[Player]:
         """
@@ -349,7 +350,7 @@ class Engine(object):
             # Further deductive reasoning based on what is known about Player hands
             got_info |= self.check_players_hand_size()
 
-    def process_turn(self, turn: Turn):
+    def process_turn(self, turn):
         """
         If we determined the card revealed during a Turn,
             remove that card from all Players' POSSIBLES
@@ -416,7 +417,7 @@ class Engine(object):
                 player.possibles = set()
                 got_info = True
             elif len(player.hand) + len(player.possibles) == player.hand_size:
-                player.hand.update(player.possibles)
+                player.hand = player.hand | player.possibles
                 # No other Player can possibly be holding Player.hand
                 self.remove_set_from_possibles(self.other_players, player.hand)
                 got_info = True
@@ -498,6 +499,7 @@ def color_cards(cards):
     """
     Wrap input item(s) in ANSI color codes for colorful output to the console
         The color applied to each item depends on what Clue Category it belongs to (Suspect, Room, Weapon)
+
     :param str|iter cards:      String or Iterable of Strings
     :return:                    Input wrapped in ANSI color codes (with RESET terminator included)
     """

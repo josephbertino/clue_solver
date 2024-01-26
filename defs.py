@@ -54,6 +54,11 @@ class ClueCardSet(object):
 
     Each ClueCardSet object is linked to the class object that created it as a variable.
     Thus, all the dunder's you see here.
+
+    When interacting with a CCS as a set, do not use .update() as this will not function properly.
+    Instead, add elements to the set with:   set = set | other_set
+
+    # TODO implement .update() for the set representation of a ClueCardSet, though not necessary because for the time being we can just do:   set = set | other_set
     """
     def __set_name__(self, owner, name):
         """Create the alias for the dict version of the card set"""
