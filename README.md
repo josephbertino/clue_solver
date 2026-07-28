@@ -161,6 +161,25 @@ ROOM = ['billiard', 'lounge', 'conservatory', 'kitchen', 'hall', 'dining', 'stud
 * Feel free to change / add cards in each category depending on the variant of Clue you are playing.
 
 
+## License
+
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0). The full text is in [LICENSE](LICENSE).
+
+**You may**, for any noncommercial purpose:
++ Use the software
++ Modify it and build new work on top of it
++ Distribute it, including your modified versions
+
+Noncommercial purposes explicitly include personal use, hobby projects, study and research, and use by schools, charities, and government institutions.
+
+**You may not** use it for commercial purposes without a separate license from me.
+
+When you redistribute the software or a derivative, you must pass along a copy of the license (or its URL) and keep the `Required Notice:` copyright line intact.
+
+**Want to use this commercially?** Email me at joseph.bertino@gmail.com. The restriction exists so that conversation happens, not to shut the door.
+
+---
+
 ## Questions?
 
 I'd love to know what you think!
