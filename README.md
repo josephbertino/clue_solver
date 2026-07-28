@@ -167,4 +167,3 @@ I'd love to know what you think!
 
 + Email: joseph.bertino@gmail.com
 + LinkedIn: http://linkedin.com/in/joseph-bertino
-+ Instagram: @yetixhunting
